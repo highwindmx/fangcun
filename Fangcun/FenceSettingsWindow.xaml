@@ -46,7 +46,7 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="30"/><RowDefinition Height="30"/><RowDefinition Height="30"/>
+                            <RowDefinition Height="30"/><RowDefinition Height="30"/>
                         </Grid.RowDefinitions>
 
                         <TextBlock Grid.Row="0" Grid.Column="0" Style="{StaticResource Label}" Text="背景颜色"/>
@@ -62,10 +62,6 @@
                             <TextBox Width="74" Margin="6,0,0,0" Text="{Binding Cfg.TitleBarColor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"/>
                             <Button Content="选择" Width="52" Margin="6,0,0,0" Click="PickTitleBarColor_Click"/>
                         </StackPanel>
-
-                        <TextBlock Grid.Row="2" Grid.Column="0" Style="{StaticResource Label}" Text="随桌面自适应"/>
-                        <CheckBox Grid.Row="2" Grid.Column="1" IsChecked="{Binding Cfg.UseWallpaperTint, Mode=TwoWay}" VerticalAlignment="Center"
-                                  ToolTip="采样桌面壁纸在围栏区域的平均色作为半透明背景（含栏底色），壁纸更换时自动更新"/>
                     </Grid>
                 </GroupBox>
 

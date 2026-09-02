@@ -8,13 +8,35 @@ using Microsoft.Win32;
 
 namespace Fangcun
 {
-    // "随桌面自适应"：采样桌面壁纸平均色，生成半透明背景写入 Style.BgColor（#AARRGGBB）。
-    // 优先按围栏在主屏的屏幕矩形映射到壁纸对应区域取平均；围栏不在主屏（多屏）则退回整图平均。
-    // 壁纸拉伸模式差异会影响精确映射，但对"半透明整体色调"观感影响可忽略，故取近似足够。
+    // "随桌面自适应"：采样桌面壁纸在围栏区域的【明暗】，生成一块**中性半透明玻璃**写入 Style.BgColor（#AARRGGBB）。
+    //
+    // 为什么是"玻璃"而不是"壁纸自己的颜色"？（2026-09-02 修正）
+    //   旧实现把围栏下方壁纸区域的平均色以高 alpha 填回背景。围栏恰好压在这块壁纸上，
+    //   同色(约80%)叠自己 ≈ 同色 → 观感就像一块不透明色板，看不到透明度。
+    //   正解：背景取【中性明暗玻璃】（深背景→深玻璃、浅背景→浅玻璃，RGB 与壁纸自身色无关），
+    //   alpha 保持在 ~60%（保留 ~40% 透出桌面），于是围栏下的桌面/图标能透过它透出 → 透明感可辨；
+    //   又因玻璃明暗跟随壁纸，字体自动黑/白仍保证可读。此即"半透明玻璃"观感。
+    //
+    // 优先按围栏在主屏的屏幕矩形映射到壁纸对应区域取平均亮度；围栏不在主屏（多屏）则退回整图平均。
+    // 壁纸拉伸模式差异会影响精确映射，但对"明暗"观感影响可忽略，故取近似足够。
     public static class WallpaperTint
     {
-        // 采样用的半透明背景 alpha（AARRGGBB 的 AA）。默认 0xCC ≈ 80% 不透明，色感清晰又不遮桌面
-        private const byte Alpha = 0xCC;
+        // 玻璃体 alpha（AARRGGBB 的 AA）：~60% → 桌面透出 ~40%，透明感清晰又不抢内容。
+        private const byte BodyAlpha = 0x99;
+        // 栏底 alpha 略高(约69%)且更暗，使标题条在玻璃体上仍可分出一条 header。
+        private const byte BarAlpha = 0xB0;
+        // 玻璃明暗两端：最浅(亮壁纸)玻璃 ~238，最深(暗壁纸)玻璃 ~24。RGB 中性，不带壁纸自身色相。
+        private const int GlassLight = 238, GlassDark = 24;
+
+        // 玻璃色值按区域感知亮度连续映射：暗壁纸→深玻璃、亮壁纸→浅玻璃。
+        // lum=0 暗壁纸→玻璃值趋 GlassDark；lum=1 亮壁纸→趋 GlassLight；中间平滑过渡避免跳变。
+        private static int GlassValue(double lum)
+        {
+            double darkFrac = 1.0 - Math.Clamp(lum, 0.0, 1.0); // 1=暗壁纸 … 0=亮壁纸
+            // ^1.7 让"偏中亮"的壁纸玻璃不至于过早发白，中暗段过渡更自然
+            double t = Math.Pow(darkFrac, 1.7);
+            return (int)Math.Round(GlassDark + (GlassLight - GlassDark) * t);
+        }
 
         // 读取当前桌面壁纸文件路径：注册表 WallPaper 为主，SystemParametersInfo 兜底。
         public static string? GetWallpaperPath()
@@ -38,16 +60,16 @@ namespace Fangcun
             return null;
         }
 
-        // 计算半透明背景色字符串（#AARRGGBB）；找不到壁纸返回 null（不覆盖用户颜色）。
+        // 计算半透明【玻璃】背景色（#AARRGGBB）；找不到壁纸返回 null（不覆盖用户颜色）。
         // fenceOnPrimary：围栏屏幕矩形（相对主屏原点 0,0，WPF Left/Top 即屏幕坐标）。
         public static string? Compute(System.Windows.Rect? fenceOnPrimary)
-            => SampleToHex(fenceOnPrimary, darken: false, Alpha);
+            => GlassHex(fenceOnPrimary, isBar: false);
 
-        // 栏底色：与背景同源，但压暗一点，使标题条在背景上仍可分辨。
+        // 栏底玻璃：与背景同源（明暗跟随壁纸），但略暗、alpha 略高，使标题条在背景上仍可分辨。
         public static string? ComputeBar(System.Windows.Rect? fenceOnPrimary)
-            => SampleToHex(fenceOnPrimary, darken: true, Alpha);
+            => GlassHex(fenceOnPrimary, isBar: true);
 
-        // 判断围栏背景底层壁纸是否偏暗（感知亮度 Y=0.299R+0.587G+0.114B < 128 → 深色）。
+        // 判断围栏下方壁纸区域是否偏暗（感知亮度 Y=0.299R+0.587G+0.114B < 128 → 深色）。
         // 供"随桌面自适应"开启时自动把条目/标题字体切成白(深底)或黑(浅底)，保证可读。
         // 找不到壁纸返回 null（调用方保持当前字色不动）。
         public static bool? ComputeIsDark(System.Windows.Rect? fenceOnPrimary)
@@ -65,7 +87,8 @@ namespace Fangcun
             catch { return null; }
         }
 
-        private static string? SampleToHex(System.Windows.Rect? fenceOnPrimary, bool darken, byte alpha)
+        // 中性玻璃：取区域感知亮度 → GlassValue → 等值 RGB（无壁纸色相），配 BodyAlpha/BarAlpha。
+        private static string? GlassHex(System.Windows.Rect? fenceOnPrimary, bool isBar)
         {
             try
             {
@@ -74,12 +97,11 @@ namespace Fangcun
                 using var bmp = new Bitmap(path);
                 var r = SampleRegion(bmp, fenceOnPrimary);
                 if (r.A == 0) return null;
-                int rr = r.R, gg = r.G, bb = r.B;
-                if (darken) // 压暗约 30%
-                {
-                    rr = (int)(rr * 0.7); gg = (int)(gg * 0.7); bb = (int)(bb * 0.7);
-                }
-                return "#" + alpha.ToString("X2") + rr.ToString("X2") + gg.ToString("X2") + bb.ToString("X2");
+                double lum = (0.299 * r.R + 0.587 * r.G + 0.114 * r.B) / 255.0;
+                int v = GlassValue(lum);
+                if (isBar) v = (int)(v * 0.82);            // 栏底更暗一条
+                byte alpha = isBar ? BarAlpha : BodyAlpha;
+                return "#" + alpha.ToString("X2") + v.ToString("X2") + v.ToString("X2") + v.ToString("X2");
             }
             catch { return null; }
         }

@@ -44,6 +44,11 @@ namespace Fangcun
         private bool _tintApplied;          // 是否已把 BgColor/TitleBarColor/字色覆盖为壁纸自适应值
         private bool _closed;
 
+        // ---------- 主题预设（浅色/深色），值与"背景样式/栏底/字色"全套匹配 ----------
+        // "主题"菜单按"当前 Style 颜色==哪套预设"决定勾选；都不是 → 判为自定义。
+        private static readonly (string Bg, string Bar, string Ink) DarkPreset = ("#80000000", "#33000000", "#FFFFFF");
+        private static readonly (string Bg, string Bar, string Ink) LightPreset = ("#99FFFFFF", "#C0FFFFFF", "#000000");
+
         public FenceWindow(Fence fence)
         {
             _fence = fence;
@@ -321,7 +326,10 @@ namespace Fangcun
         // 分层窗下透明度完全由 BgColor 的 #AARRGGBB 经 WPF per-pixel alpha 合成，改色后绑定自动刷新，无需手动重绘
         internal void RefreshBackground() { }
 
-        // ---------- 随桌面自适应（壁纸平均色半透明背景） ----------
+        // ---------- 随桌面自适应（中性半透明玻璃背景） ----------
+        // 不把壁纸区域平均色直接填回背景（同色 80% 叠自己≈不透明色板，观感不透），
+        // 而是按区域明暗生成中性玻璃(RGB 与壁纸色相无关)+~60% alpha → 桌面透出、透明可辨。
+        // 栏底同源略暗；条目/标题字色按明暗切黑/白。见 WallpaperTint.cs 顶部注释。
         private void Style_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
             if (e.PropertyName == nameof(FenceStyle.UseWallpaperTint))
@@ -624,6 +632,33 @@ namespace Fangcun
         private void MenuConfig_Click(object sender, RoutedEventArgs e)
             => new FenceSettingsWindow(_fence).ShowDialog();
 
+        // 主题：浅色/深色=固定预设；自适应=跟随桌面壁纸明暗(UseWallpaperTint)；自定义=把当前样式固定下来、退出自适应。
+        // 关键顺序：先清 _tintApplied/_manual*(使关自适应时 RestoreManualBg 直接 return、不还原旧色)，
+        // 再关 UseWallpaperTint(触发 Style_PropertyChanged→RestoreManualBg，此时已 no-op)，最后按选择处理：
+        //   Adaptive → 重新置 true 触发 Style_PropertyChanged→ApplyWallpaperTint 立刻套用；
+        //   Light/Dark → 覆盖预设色；Custom → 不动颜色(保留用户当前样式)。
+        private void MenuTheme_Click(object sender, RoutedEventArgs e)
+        {
+            if (((MenuItem)sender).Tag is not string tag) return;
+            _tintApplied = false;
+            _manualBg = _manualTitleBar = _manualItemColor = _manualTitleColor = null;
+            _fence.Style.UseWallpaperTint = false; // 触发 RestoreManualBg(no-op，因快照已清)
+            if (tag == "Adaptive") _fence.Style.UseWallpaperTint = true; // 触发 Style_PropertyChanged→ApplyWallpaperTint
+            else if (tag == "Light") ApplyThemeColors(LightPreset);
+            else if (tag == "Dark") ApplyThemeColors(DarkPreset);
+            // "Custom"：保持现状（自适应已关、颜色未动）
+            Save();
+        }
+
+        private void ApplyThemeColors((string Bg, string Bar, string Ink) p)
+        {
+            var s = _fence.Style;
+            s.BgColor = p.Bg;
+            s.TitleBarColor = p.Bar;
+            s.ItemColor = p.Ink;
+            s.TitleColor = p.Ink;
+        }
+
         private void MenuOverflow_Click(object sender, RoutedEventArgs e)
         {
             if (((MenuItem)sender).Tag is string tag && Enum.TryParse<OverflowMode>(tag, out var m))
@@ -655,6 +690,24 @@ namespace Fangcun
             LayoutList.IsChecked = _fence.Style.ItemLayout == "List";
             OverflowScroll.IsChecked = _fence.Overflow == OverflowMode.Scroll;
             OverflowEllipsis.IsChecked = _fence.Overflow == OverflowMode.Ellipsis;
+            // 主题勾选：开着随桌面自适应→勾"自适应"；否则颜色==哪套预设则勾它；手动改过 → 判自定义。
+            string th = ResolveTheme();
+            ThemeAdaptive.IsChecked = th == "Adaptive";
+            ThemeLight.IsChecked = th == "Light";
+            ThemeDark.IsChecked = th == "Dark";
+            ThemeCustom.IsChecked = th == "Custom";
+        }
+
+        // 推导当前主题：UseWallpaperTint 开着→Adaptive(最高优先级，自适应动态色不必去匹配预设)；
+        // 否则背景/栏底颜色==某套预设→Light/Dark；都不等(手动改过)→Custom。
+        private string ResolveTheme()
+        {
+            var s = _fence.Style;
+            if (s.UseWallpaperTint) return "Adaptive";
+            bool eq(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+            if (eq(s.BgColor, DarkPreset.Bg) && eq(s.TitleBarColor, DarkPreset.Bar)) return "Dark";
+            if (eq(s.BgColor, LightPreset.Bg) && eq(s.TitleBarColor, LightPreset.Bar)) return "Light";
+            return "Custom";
         }
 
         // ---------- 显示模式（图标/列表） ----------
