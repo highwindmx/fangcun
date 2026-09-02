@@ -37,9 +37,11 @@ namespace Fangcun
         private bool _reparented;      // = 是否已成功设 owner（Win+D 免疫）
         private static bool _sent052C;
 
-        private string? _manualBg;         // 随桌面自适应关闭时要还原的手动背景色
-        private string? _manualTitleBar;   // 随桌面自适应关闭时要还原的手动栏底色
-        private bool _tintApplied;         // 是否已把 BgColor/TitleBarColor 覆盖为壁纸采样色
+        private string? _manualBg;          // 随桌面自适应关闭时要还原的手动背景色
+        private string? _manualTitleBar;    // 随桌面自适应关闭时要还原的手动栏底色
+        private string? _manualItemColor;   // 随桌面自适应关闭时要还原的手动条目字体色
+        private string? _manualTitleColor;  // 随桌面自适应关闭时要还原的手动标题/按钮字色
+        private bool _tintApplied;          // 是否已把 BgColor/TitleBarColor/字色覆盖为壁纸自适应值
         private bool _closed;
 
         public FenceWindow(Fence fence)
@@ -341,10 +343,12 @@ namespace Fangcun
             if (!_fence.Style.UseWallpaperTint) return;
             try
             {
-                if (!_tintApplied) // 记住用户手动色（背景 + 栏底）
+                if (!_tintApplied) // 记住用户手动色（背景 + 栏底 + 条目字 + 标题字）
                 {
                     _manualBg = _fence.Style.BgColor;
                     _manualTitleBar = _fence.Style.TitleBarColor;
+                    _manualItemColor = _fence.Style.ItemColor;
+                    _manualTitleColor = _fence.Style.TitleColor;
                     _tintApplied = true;
                 }
                 // 围栏屏幕矩形（Left/Top 即屏幕坐标，主屏原点 0,0）。围栏 reparent 到桌面后可能为父相对负坐标，
@@ -360,6 +364,14 @@ namespace Fangcun
                 {
                     _fence.Style.TitleBarColor = bar; // 栏底同源但压暗，随桌面自适应一起刷新
                 }
+                // 条目字体(及标题/按钮)颜色按背景明暗切黑/白：深底白字、浅底黑字，保证可读。
+                var dark = WallpaperTint.ComputeIsDark(rect);
+                if (dark.HasValue)
+                {
+                    string ink = dark.Value ? "#FFFFFF" : "#000000";
+                    if (_fence.Style.ItemColor != ink) _fence.Style.ItemColor = ink;
+                    if (_fence.Style.TitleColor != ink) _fence.Style.TitleColor = ink;
+                }
                 Save();
             }
             catch { }
@@ -374,6 +386,10 @@ namespace Fangcun
                     _fence.Style.BgColor = _manualBg;
                 if (_manualTitleBar != null && _fence.Style.TitleBarColor != _manualTitleBar)
                     _fence.Style.TitleBarColor = _manualTitleBar;
+                if (_manualItemColor != null && _fence.Style.ItemColor != _manualItemColor)
+                    _fence.Style.ItemColor = _manualItemColor;
+                if (_manualTitleColor != null && _fence.Style.TitleColor != _manualTitleColor)
+                    _fence.Style.TitleColor = _manualTitleColor;
                 Save();
             }
         }

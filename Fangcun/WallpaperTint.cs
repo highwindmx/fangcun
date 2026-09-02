@@ -47,6 +47,24 @@ namespace Fangcun
         public static string? ComputeBar(System.Windows.Rect? fenceOnPrimary)
             => SampleToHex(fenceOnPrimary, darken: true, Alpha);
 
+        // 判断围栏背景底层壁纸是否偏暗（感知亮度 Y=0.299R+0.587G+0.114B < 128 → 深色）。
+        // 供"随桌面自适应"开启时自动把条目/标题字体切成白(深底)或黑(浅底)，保证可读。
+        // 找不到壁纸返回 null（调用方保持当前字色不动）。
+        public static bool? ComputeIsDark(System.Windows.Rect? fenceOnPrimary)
+        {
+            try
+            {
+                var path = GetWallpaperPath();
+                if (path == null) return null;
+                using var bmp = new Bitmap(path);
+                var r = SampleRegion(bmp, fenceOnPrimary);
+                if (r.A == 0) return null;
+                double y = 0.299 * r.R + 0.587 * r.G + 0.114 * r.B;
+                return y < 128.0;
+            }
+            catch { return null; }
+        }
+
         private static string? SampleToHex(System.Windows.Rect? fenceOnPrimary, bool darken, byte alpha)
         {
             try
