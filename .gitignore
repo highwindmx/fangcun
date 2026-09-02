@@ -1,0 +1,16 @@
+## .NET build outputs
+bin/
+obj/
+*.user
+*.suo
+
+## WorkBuddy local data (not part of the deliverable)
+.workbuddy/
+
+## Local logs / runtime data
+*.log
+
+## OS cruft
+Thumbs.db
+Desktop.ini
+.DS_Store

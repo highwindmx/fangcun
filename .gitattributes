@@ -1,0 +1,12 @@
+* text=auto eol=crlf
+
+# Binaries — never line-normalize
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.gif binary
+*.dll binary
+*.exe binary
+*.ttf binary
+*.db binary

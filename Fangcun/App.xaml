@@ -1,0 +1,16 @@
+<Application x:Class="Fangcun.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Fangcun">
+    <Application.Resources>
+        <!-- 全局 Converter：供 FenceWindow / FenceSettingsWindow 任意位置（含根元素属性）以 StaticResource 引用，
+             避免根元素在 Window.Resources 解析前引用导致的“资源未找到”崩溃。 -->
+        <local:StringToBrush x:Key="BrushConv"/>
+        <local:StringToHAlign x:Key="AlignConv"/>
+        <local:BoolToVisibility x:Key="BoolToVis"/>
+        <local:EqualToVisibility x:Key="EqVis"/>
+        <local:ShowNameVisibility x:Key="ShowNameVis"/>
+        <local:IconPanelVisibility x:Key="IconVis"/>
+        <local:ListPanelVisibility x:Key="ListVis"/>
+    </Application.Resources>
+</Application>

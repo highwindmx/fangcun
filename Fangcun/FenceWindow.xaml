@@ -1,0 +1,182 @@
+<Window x:Class="Fangcun.FenceWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Fangcun"
+        x:Name="Root"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="CanResize" ShowInTaskbar="False"
+        PreviewMouseDown="Window_PreviewMouseDown">
+    <Border x:Name="RootBorder" CornerRadius="12"
+            Background="{Binding Style.BgColor, Converter={StaticResource BrushConv}}" BorderBrush="#55FFFFFF" BorderThickness="1" Padding="6"
+            AllowDrop="True"
+            DragEnter="ItemsHost_DragEnter" DragOver="ItemsHost_DragOver"
+            DragLeave="ItemsHost_DragLeave" Drop="ItemsHost_Drop">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- 标题栏 -->
+            <Grid Grid.Row="0" x:Name="TitleBar" Background="{Binding Style.TitleBarColor, Converter={StaticResource BrushConv}}" Cursor="SizeAll" MinHeight="26">
+                <TextBlock x:Name="TitleText" Text="{Binding Title}"
+                           Foreground="{Binding Style.TitleColor, Converter={StaticResource BrushConv}}"
+                           FontFamily="{Binding Style.TitleFontFamily}"
+                           FontSize="{Binding Style.TitleFontSize}"
+                           FontWeight="Bold"
+                           HorizontalAlignment="{Binding Style.TitleAlign, Converter={StaticResource AlignConv}}"
+                           VerticalAlignment="Center" Margin="8,0" TextTrimming="CharacterEllipsis"/>
+                <TextBox x:Name="TitleEdit" Visibility="Collapsed" LostFocus="TitleEdit_LostFocus"
+                         KeyDown="TitleEdit_KeyDown" Background="#40000000"
+                         Foreground="{Binding Style.TitleColor, Converter={StaticResource BrushConv}}"
+                         FontFamily="{Binding Style.TitleFontFamily}" FontSize="{Binding Style.TitleFontSize}"
+                         BorderThickness="0" Margin="4,2"/>
+                <StackPanel x:Name="BtnStrip" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <!-- “…” 菜单入口：左键打开围栏菜单（重命名/配置/溢出模式/删除/新建） -->
+                    <Button x:Name="BtnMenu" Content="⋯" Width="24" Height="24" Margin="0,0,2,0"
+                            Background="Transparent" Cursor="Hand"
+                            Foreground="{Binding Style.TitleColor, Converter={StaticResource BrushConv}}"
+                            BorderThickness="0" ToolTip="围栏菜单" Click="BtnMenu_Click"/>
+                    <Button x:Name="BtnCollapse" Content="▾" Width="24" Height="24"
+                            Background="Transparent" Cursor="Hand"
+                            Foreground="{Binding Style.TitleColor, Converter={StaticResource BrushConv}}"
+                            BorderThickness="0" ToolTip="折叠/展开" Click="BtnCollapse_Click"/>
+                </StackPanel>
+                <Grid.ContextMenu>
+                    <ContextMenu Opened="TitleCtx_Opened">
+                        <MenuItem Header="重命名" Click="MenuRename_Click"/>
+                        <MenuItem Header="配置" Click="MenuConfig_Click"/>
+                        <!-- 显示模式（图标/列表）：左键点“…”、右键标题栏都能开菜单调整 -->
+                        <MenuItem Header="显示模式">
+                            <MenuItem x:Name="LayoutIcon" Header="图标" Tag="Icon" IsCheckable="True" Click="MenuLayout_Click"/>
+                            <MenuItem x:Name="LayoutList" Header="列表" Tag="List" IsCheckable="True" Click="MenuLayout_Click"/>
+                        </MenuItem>
+                        <MenuItem Header="溢出模式">
+                            <MenuItem x:Name="OverflowScroll" Header="滚动" Tag="Scroll" IsCheckable="True" Click="MenuOverflow_Click"/>
+                            <MenuItem x:Name="OverflowEllipsis" Header="省略" Tag="Ellipsis" IsCheckable="True" Click="MenuOverflow_Click"/>
+                        </MenuItem>
+                        <MenuItem Header="删除围栏" Click="MenuDelete_Click"/>
+                        <Separator/>
+                        <MenuItem Header="新建围栏" Click="MenuNewFence_Click"/>
+                    </ContextMenu>
+                </Grid.ContextMenu>
+            </Grid>
+
+            <!-- 条目区 -->
+            <ScrollViewer Grid.Row="1" x:Name="Scroller" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Background="Transparent" AllowDrop="True"
+                          PreviewMouseLeftButtonDown="ItemsHost_PreviewMouseLeftButtonDown"
+                          Drop="ItemsHost_Drop" DragEnter="ItemsHost_DragEnter"
+                          DragOver="ItemsHost_DragOver" DragLeave="ItemsHost_DragLeave">
+                <ItemsControl x:Name="ItemsHost" AllowDrop="True" Background="Transparent">
+                    <ItemsControl.Style>
+                        <Style TargetType="ItemsControl">
+                            <Setter Property="ItemsPanel">
+                                <Setter.Value>
+                                    <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ItemLayout}" Value="List">
+                                    <Setter Property="ItemsPanel">
+                                        <Setter.Value>
+                                            <ItemsPanelTemplate><StackPanel Orientation="Vertical"/></ItemsPanelTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ItemsControl.Style>
+                    <ItemsControl.ItemContainerStyle>
+                        <Style TargetType="ContentPresenter">
+                            <Setter Property="Margin" Value="4"/>
+                        </Style>
+                    </ItemsControl.ItemContainerStyle>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border x:Name="ItemBorder" Padding="4" AllowDrop="True" Background="Transparent"
+                                    PreviewMouseLeftButtonDown="Item_PreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="Item_PreviewMouseMove"
+                                    PreviewMouseLeftButtonUp="Item_PreviewMouseLeftButtonUp"
+                                    Drop="Item_Drop" DragEnter="Item_DragEnter"
+                                    DragOver="Item_DragOver" DragLeave="Item_DragLeave">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Width" Value="76"/>
+                                        <Setter Property="HorizontalAlignment" Value="Left"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ItemLayout}" Value="List">
+                                                <Setter Property="Width" Value="Auto"/>
+                                                <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <Border.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="打开" Click="ItemOpen_Click"/>
+                                        <MenuItem Header="打开所在位置" Click="ItemOpenLocation_Click"/>
+                                        <Separator/>
+                                        <MenuItem Header="从围栏移除" Click="ItemRemove_Click"/>
+                                    </ContextMenu>
+                                </Border.ContextMenu>
+                                <Grid>
+                                    <!-- 省略号"更多"提示 -->
+                                    <StackPanel Orientation="Vertical" HorizontalAlignment="Center"
+                                                Visibility="{Binding IsEllipsis, Converter={StaticResource BoolToVis}}">
+                                        <Path Data="M 4 8 L 18 22 L 32 8" Stroke="White" StrokeThickness="3"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              HorizontalAlignment="Center" Margin="0,6,0,2"/>
+                                        <TextBlock Text="{Binding DisplayName}" Foreground="White"
+                                                   FontSize="11" TextAlignment="Center" TextWrapping="Wrap"/>
+                                    </StackPanel>
+
+                                    <!-- 图标布局 -->
+                                    <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                                        <StackPanel.Visibility>
+                                            <MultiBinding Converter="{StaticResource IconVis}">
+                                                <Binding Path="IsEllipsis"/>
+                                                <Binding RelativeSource="{RelativeSource AncestorType=local:FenceWindow}" Path="DataContext.Style.ItemLayout"/>
+                                            </MultiBinding>
+                                        </StackPanel.Visibility>
+                                        <Image Source="{Binding IconSource}" Width="40" Height="40" Stretch="Uniform"/>
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   Foreground="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ItemColor, Converter={StaticResource BrushConv}}"
+                                                   FontFamily="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ItemFontFamily}"
+                                                   FontSize="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ItemFontSize}"
+                                                   TextWrapping="Wrap" TextAlignment="Center" MaxHeight="28" Margin="0,2,0,0"
+                                                   Visibility="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ShowItemName, Converter={StaticResource BoolToVis}}"/>
+                                    </StackPanel>
+
+                                    <!-- 列表布局 -->
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <StackPanel.Visibility>
+                                            <MultiBinding Converter="{StaticResource ListVis}">
+                                                <Binding Path="IsEllipsis"/>
+                                                <Binding RelativeSource="{RelativeSource AncestorType=local:FenceWindow}" Path="DataContext.Style.ItemLayout"/>
+                                            </MultiBinding>
+                                        </StackPanel.Visibility>
+                                        <Image Source="{Binding IconSource}" Width="16" Height="16" Stretch="Uniform" Margin="2,0,6,0"/>
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   Foreground="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ItemColor, Converter={StaticResource BrushConv}}"
+                                                   FontFamily="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ItemFontFamily}"
+                                                   FontSize="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ItemFontSize}"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                   Visibility="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ShowItemName, Converter={StaticResource BoolToVis}}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <!-- 右下角缩放指示（纯装饰，实际缩放由边界命中测试处理） -->
+            <Border Grid.Row="1" Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    Margin="0,0,2,2" IsHitTestVisible="False" Opacity="0.5">
+                <Path Data="M 0 14 L 14 14 L 14 0" Stroke="#CCFFFFFF" StrokeThickness="2"/>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

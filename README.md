@@ -1,0 +1,78 @@
+# 方寸 (Fangcun)
+
+> 方寸之间，图标各安其位。
+
+一个面向 Windows 桌面的**图标围栏（Icon Fences）工具**，类似 Stardock Fences。用多个可自定义的“围栏”把桌面图标分门别类收纳：半透明圆角、可拖动缩放、随桌面壁纸自适应、不受“显示桌面(Win+D)”影响。
+
+![.NET](https://img.shields.io/badge/.NET-10.0--windows-blue)
+![Lang](https://img.shields.io/badge/Lang-C%23%20%2F%20WPF-green)
+![License](https://img.shields.io/badge/License-MIT-yellow)
+
+---
+
+## 功能特性
+
+- **图标围栏分组收纳**：创建多个围栏，把常用快捷方式、文件拖进去，桌面从此整洁清晰。
+- **真实图标渲染**：读取目标自身的真实文件/快捷方式图标，双击即用系统 `ShellExecute` 打开。
+- **半透明圆角**：围栏为 per-pixel alpha 分层窗口，支持圆角与任意半透明度。
+- **Win+D 免疫**：围栏是独立顶层窗口但把**所有者(owner)** 挂到桌面 `SHELLDLL_DefView`——按 Win+D 显示桌面时围栏**不会隐藏**，且可被普通窗口正常遮挡（不置顶）。
+- **全功能围栏操作**：
+  - 标题栏拖动移动；双击标题栏重命名。
+  - 四边/四角原生缩放（缩放光标跟随）。
+  - 条目拖放、右键菜单。
+  - 溢出模式：**滚动** 或 **省略**（超出容量折叠为“还有 N 项”）。
+  - 显示模式：**图标** 或 **列表**。
+- **随桌面壁纸自适应**：可选“随桌面自适应”——按围栏所在区域采样桌面壁纸平均色作为半透明背景，换壁纸自动刷新；栏底(标题栏)颜色一并同源压暗，保持可分辨。
+- **系统托盘常驻**：开机自启、新建围栏、一键**隐藏/显示所有围栏(N)**、退出。
+- **多实例免疫**：单实例守卫，双击 exe 不会重复叠加启动。
+
+## 界面
+
+配置窗口按“背景样式 → 标题栏样式 → 条目样式”组织，背景样式内含背景色、栏底色与“随桌面自适应”开关；围栏“⋯”菜单可快捷切换显示模式与溢出模式，无需进配置窗口。
+
+## 快速开始
+
+### 直接使用（发行版）
+下载 Release 的单文件 `Fangcun.exe`，双击即可运行，无需安装 .NET（`--no-self-contained` 版需本机装有 .NET 10 Desktop Runtime）。
+
+### 从源码构建
+
+环境：Windows + [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)。
+
+```bash
+git clone git@github.com:highwindmx/fangcun.git
+cd fangcun
+
+# Debug 运行
+dotnet run --project Fangcun
+
+# 发布单文件 exe（win-x64，框架依赖）
+dotnet publish Fangcun -c Release -r win-x64 --no-self-contained \
+  -p:PublishSingleFile=true -p:PublishReadyToRun=false
+```
+
+产物位于 `Fangcun/bin/Release/net10.0-windows/win-x64/publish/Fangcun.exe`。
+
+## 数据与日志
+
+- 配置：`%LocalAppData%\Fangcun\config.json`（围栏列表、位置尺寸、样式）。
+- 运行日志：`%LocalAppData%\Fangcun\fangcun.log`（排障用，尤其 Win+D 免疫的 owner 挂载状态）。
+
+## 架构要点（技术速览）
+
+| 主题 | 方案 |
+|---|---|
+| 窗口模型 | 顶层 `Window` + `AllowsTransparency`（per-pixel alpha），非 reparent 子窗 |
+| Win+D 免疫 | `SetWindowLongPtr(hwnd, GWL_HWNDPARENT, SHELLDLL_DefView)` 设 **owner**，非 `SetParent` 子窗关系 → 半透明圆角正常 + 不随 Win+D 隐藏 + 坐标零污染 |
+| 缩放/移动 | `WM_NCHITTEST` 返回 `HT*`/`HTCAPTION` 交系统原生处理（根 `ResizeMode=CanResize`） |
+| 圆角 | WPF `CornerRadius` + `Clip` |
+| 图标 | `SHGetFileInfo` 取目标自身真实图标 |
+| 自适应背景 | `WallpaperTint` 采样壁纸区域平均色 + `SystemEvents.UserPreferenceChanged` 刷新 |
+
+## 鸣谢
+
+本项目在“让 Windows 围栏既保持半透明圆角、又能免疫 `Win+D`”这一难点上，深受 **[openFence](https://github.com/weiweigogo/openFrence)**（C++/Win32 桌面围栏）的思路启发——尤其是“贴桌面 + 分层合成”的窗口宿主机制，以及“显示桌面只最小化顶层窗口、归入桌面归属即可逃逸”这一关键原理的印证。在此对 openFence 项目的作者与贡献者表示诚挚感谢。
+
+## 许可证
+
+[MIT](LICENSE) © 2026 highwindmx
