@@ -9,6 +9,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Data;
 using System.Windows.Threading;
 using Microsoft.Win32;
 
@@ -44,6 +46,11 @@ namespace Fangcun
         private bool _tintApplied;          // 是否已把 BgColor/TitleBarColor/字色覆盖为壁纸自适应值
         private bool _closed;
 
+        // 壁纸轮询：记录上次壁纸签名（路径|时间戳），心跳比对变化时重算自适应（兜底第三方换壁纸不触发系统事件）
+        private string? _lastTintSig;
+        // 背景/栏底原始绑定（构造后捕获），变色淡入时临时解绑再于动画结束复原
+        private Binding? _bgBinding, _barBinding;
+
         // ---------- 主题预设（浅色/深色），值与"背景样式/栏底/字色"全套匹配 ----------
         // "主题"菜单按"当前 Style 颜色==哪套预设"决定勾选；都不是 → 判为自定义。
         private static readonly (string Bg, string Bar, string Ink) DarkPreset = ("#80000000", "#33000000", "#FFFFFF");
@@ -54,6 +61,10 @@ namespace Fangcun
             _fence = fence;
             DataContext = _fence;
             InitializeComponent();
+
+            // 捕获背景/栏底原始绑定，供变色淡入时临时解绑、动画结束复原（保持与 Style.* 的双向绑定）
+            _bgBinding = BindingOperations.GetBinding(RootBorder, BackgroundProperty);
+            _barBinding = BindingOperations.GetBinding(TitleBar, BackgroundProperty);
 
             // 顶层窗口直接用 WPF 逻辑坐标定位（WPF 自动处理 DPI），无需手动像素换算
             Left = _fence.X;
@@ -240,6 +251,17 @@ namespace Fangcun
                     _reparented = false;
                     ReparentToDesktop();
                 }
+
+                // 壁纸变更轮询：仅自适应开启时，比对壁纸签名（路径|时间戳），变了就重算（兜底第三方换壁纸不触发系统事件）
+                if (_fence.Style.UseWallpaperTint)
+                {
+                    var sig = WallpaperTint.GetWallpaperSignature();
+                    if (sig != null && sig != _lastTintSig)
+                    {
+                        _lastTintSig = sig;
+                        ApplyWallpaperTint();
+                    }
+                }
             }
             catch { }
         }
@@ -364,13 +386,15 @@ namespace Fangcun
                 var rect = new Rect(Left, Top, ActualWidth, ActualHeight);
                 var bg = WallpaperTint.Compute(rect);
                 var bar = WallpaperTint.ComputeBar(rect);
-                if (bg != null && _fence.Style.BgColor != bg)
+                if (bg != null)
                 {
-                    _fence.Style.BgColor = bg; // 触发绑定刷新背景
+                    FadeBackground(_bgBinding, RootBorder, BackgroundProperty, bg);
+                    if (_fence.Style.BgColor != bg) _fence.Style.BgColor = bg; // 触发绑定（淡入结束复原后反映此值）
                 }
-                if (bar != null && _fence.Style.TitleBarColor != bar)
+                if (bar != null)
                 {
-                    _fence.Style.TitleBarColor = bar; // 栏底同源但压暗，随桌面自适应一起刷新
+                    FadeBackground(_barBinding, TitleBar, BackgroundProperty, bar);
+                    if (_fence.Style.TitleBarColor != bar) _fence.Style.TitleBarColor = bar;
                 }
                 // 条目字体(及标题/按钮)颜色按背景明暗切黑/白：深底白字、浅底黑字，保证可读。
                 var dark = WallpaperTint.ComputeIsDark(rect);
@@ -380,9 +404,29 @@ namespace Fangcun
                     if (_fence.Style.ItemColor != ink) _fence.Style.ItemColor = ink;
                     if (_fence.Style.TitleColor != ink) _fence.Style.TitleColor = ink;
                 }
+                _lastTintSig = WallpaperTint.GetWallpaperSignature(); // 记录当前壁纸签名，供心跳轮询比对
                 Save();
             }
             catch { }
+        }
+
+        // 变色淡入：临时解绑目标(dp) 的原绑定、以旧色起手的 SolidColorBrush 做 ~220ms ColorAnimation 到 newHex，
+        // 动画结束复原原始绑定（继续跟随 Style.*）。newHex 无效或无可动画笔刷时直接复原绑定。
+        private void FadeBackground(Binding? origBinding, DependencyObject target, DependencyProperty dp, string? newHex)
+        {
+            if (newHex == null || origBinding == null) return;
+            Color newColor;
+            try { newColor = (Color)ColorConverter.ConvertFromString(newHex); }
+            catch { BindingOperations.SetBinding(target, dp, origBinding); return; }
+            var oldBrush = target.GetValue(dp) as SolidColorBrush;
+            if (oldBrush == null) { BindingOperations.SetBinding(target, dp, origBinding); return; }
+
+            var animBrush = new SolidColorBrush(oldBrush.Color);
+            BindingOperations.ClearBinding(target, dp);
+            target.SetValue(dp, animBrush);
+            var anim = new ColorAnimation(newColor, TimeSpan.FromMilliseconds(220)) { FillBehavior = FillBehavior.Stop };
+            anim.Completed += (_, _) => BindingOperations.SetBinding(target, dp, origBinding);
+            animBrush.BeginAnimation(SolidColorBrush.ColorProperty, anim);
         }
 
         private void RestoreManualBg()
@@ -629,35 +673,60 @@ namespace Fangcun
         }
 
         // ---------- 右键菜单（围栏） ----------
-        private void MenuConfig_Click(object sender, RoutedEventArgs e)
-            => new FenceSettingsWindow(_fence).ShowDialog();
+        // 「预设主题」「自定义」都进入配置窗：前者聚焦预设主题区、后者聚焦自定义配色区。
+        // 配置窗里的预设选择会回调本类的 ApplyPresetTheme；手动改色会回调 ExitAdaptive（让自定义粘住）。
+        private void MenuPresetTheme_Click(object sender, RoutedEventArgs e)
+            => new FenceSettingsWindow(_fence, this, "preset").ShowDialog();
+        private void MenuCustom_Click(object sender, RoutedEventArgs e)
+            => new FenceSettingsWindow(_fence, this, "custom").ShowDialog();
 
-        // 主题：浅色/深色=固定预设；自适应=跟随桌面壁纸明暗(UseWallpaperTint)；自定义=把当前样式固定下来、退出自适应。
+        // 预设主题：浅色/深色=固定预设；自适应=跟随桌面壁纸明暗(UseWallpaperTint)；自定义=把当前样式固定下来、退出自适应。
         // 关键顺序：先清 _tintApplied/_manual*(使关自适应时 RestoreManualBg 直接 return、不还原旧色)，
         // 再关 UseWallpaperTint(触发 Style_PropertyChanged→RestoreManualBg，此时已 no-op)，最后按选择处理：
         //   Adaptive → 重新置 true 触发 Style_PropertyChanged→ApplyWallpaperTint 立刻套用；
-        //   Light/Dark → 覆盖预设色；Custom → 不动颜色(保留用户当前样式)。
-        private void MenuTheme_Click(object sender, RoutedEventArgs e)
+        //   Light/Dark → 覆盖预设色（带淡入）；Custom → 不动颜色(保留用户当前样式)。
+        // 同时供配置窗预设区回调使用。
+        internal void ApplyPresetTheme(string tag)
         {
-            if (((MenuItem)sender).Tag is not string tag) return;
             _tintApplied = false;
             _manualBg = _manualTitleBar = _manualItemColor = _manualTitleColor = null;
-            _fence.Style.UseWallpaperTint = false; // 触发 RestoreManualBg(no-op，因快照已清)
             if (tag == "Adaptive") _fence.Style.UseWallpaperTint = true; // 触发 Style_PropertyChanged→ApplyWallpaperTint
-            else if (tag == "Light") ApplyThemeColors(LightPreset);
-            else if (tag == "Dark") ApplyThemeColors(DarkPreset);
+            else if (tag == "Light") { _fence.Style.UseWallpaperTint = false; ApplyThemeColors(LightPreset); }
+            else if (tag == "Dark") { _fence.Style.UseWallpaperTint = false; ApplyThemeColors(DarkPreset); }
             // "Custom"：保持现状（自适应已关、颜色未动）
             Save();
+        }
+
+        // 手动改自定义配色时调用：退出自适应，使手填色不被后续壁纸重算覆盖（自定义=手动样式）。
+        internal void ExitAdaptive()
+        {
+            if (!_fence.Style.UseWallpaperTint) return;
+            _tintApplied = false;
+            _manualBg = _manualTitleBar = _manualItemColor = _manualTitleColor = null;
+            _fence.Style.UseWallpaperTint = false; // 触发 Style_PropertyChanged→RestoreManualBg(no-op，快照已清)
         }
 
         private void ApplyThemeColors((string Bg, string Bar, string Ink) p)
         {
             var s = _fence.Style;
-            s.BgColor = p.Bg;
-            s.TitleBarColor = p.Bar;
             s.ItemColor = p.Ink;
             s.TitleColor = p.Ink;
+            FadeBackground(_bgBinding, RootBorder, BackgroundProperty, p.Bg);
+            FadeBackground(_barBinding, TitleBar, BackgroundProperty, p.Bar);
+            if (s.BgColor != p.Bg) s.BgColor = p.Bg;
+            if (s.TitleBarColor != p.Bar) s.TitleBarColor = p.Bar;
         }
+
+        // 推导主题（静态版，供配置窗预设区初值）：UseWallpaperTint 开着→Adaptive；否则颜色==某套预设→Light/Dark；都不等→Custom。
+        internal static string ResolveTheme(FenceStyle s)
+        {
+            if (s.UseWallpaperTint) return "Adaptive";
+            bool eq(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+            if (eq(s.BgColor, DarkPreset.Bg) && eq(s.TitleBarColor, DarkPreset.Bar)) return "Dark";
+            if (eq(s.BgColor, LightPreset.Bg) && eq(s.TitleBarColor, LightPreset.Bar)) return "Light";
+            return "Custom";
+        }
+
 
         private void MenuOverflow_Click(object sender, RoutedEventArgs e)
         {
@@ -690,24 +759,6 @@ namespace Fangcun
             LayoutList.IsChecked = _fence.Style.ItemLayout == "List";
             OverflowScroll.IsChecked = _fence.Overflow == OverflowMode.Scroll;
             OverflowEllipsis.IsChecked = _fence.Overflow == OverflowMode.Ellipsis;
-            // 主题勾选：开着随桌面自适应→勾"自适应"；否则颜色==哪套预设则勾它；手动改过 → 判自定义。
-            string th = ResolveTheme();
-            ThemeAdaptive.IsChecked = th == "Adaptive";
-            ThemeLight.IsChecked = th == "Light";
-            ThemeDark.IsChecked = th == "Dark";
-            ThemeCustom.IsChecked = th == "Custom";
-        }
-
-        // 推导当前主题：UseWallpaperTint 开着→Adaptive(最高优先级，自适应动态色不必去匹配预设)；
-        // 否则背景/栏底颜色==某套预设→Light/Dark；都不等(手动改过)→Custom。
-        private string ResolveTheme()
-        {
-            var s = _fence.Style;
-            if (s.UseWallpaperTint) return "Adaptive";
-            bool eq(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
-            if (eq(s.BgColor, DarkPreset.Bg) && eq(s.TitleBarColor, DarkPreset.Bar)) return "Dark";
-            if (eq(s.BgColor, LightPreset.Bg) && eq(s.TitleBarColor, LightPreset.Bar)) return "Light";
-            return "Custom";
         }
 
         // ---------- 显示模式（图标/列表） ----------

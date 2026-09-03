@@ -28,13 +28,13 @@ namespace Fangcun
         // 玻璃明暗两端：最浅(亮壁纸)玻璃 ~238，最深(暗壁纸)玻璃 ~24。RGB 中性，不带壁纸自身色相。
         private const int GlassLight = 238, GlassDark = 24;
 
-        // 玻璃色值按区域感知亮度连续映射：暗壁纸→深玻璃、亮壁纸→浅玻璃。
-        // lum=0 暗壁纸→玻璃值趋 GlassDark；lum=1 亮壁纸→趋 GlassLight；中间平滑过渡避免跳变。
+        // 玻璃色值按区域感知亮度连续映射：亮壁纸→浅玻璃、暗壁纸→深玻璃（与壁纸自身明暗一致，围栏才像"贴"在桌面上）。
+        // 旧实现误用 darkFrac=1-lum 再配 GlassLight 端点，把亮壁纸算成深玻璃、暗壁纸算成浅玻璃 → 自适应恒显深色（已修正）。
+        // lum=1 亮壁纸→玻璃值趋 GlassLight；lum=0 暗壁纸→趋 GlassDark；中间平滑过渡避免跳变。
         private static int GlassValue(double lum)
         {
-            double darkFrac = 1.0 - Math.Clamp(lum, 0.0, 1.0); // 1=暗壁纸 … 0=亮壁纸
-            // ^1.7 让"偏中亮"的壁纸玻璃不至于过早发白，中暗段过渡更自然
-            double t = Math.Pow(darkFrac, 1.7);
+            double t = Math.Clamp(lum, 0.0, 1.0); // 0=暗壁纸 … 1=亮壁纸
+            t = Math.Pow(t, 0.9);                  // 轻微曲线：中亮壁纸不至于过早发暗
             return (int)Math.Round(GlassDark + (GlassLight - GlassDark) * t);
         }
 
@@ -58,6 +58,17 @@ namespace Fangcun
             }
             catch { }
             return null;
+        }
+
+        // 壁纸变更签名：路径 + 文件最后写入时间（UTC ticks）。用于心跳轮询检测壁纸是否被替换
+        // （部分第三方动态壁纸/幻灯片不会触发 SystemEvents.UserPreferenceChanged，只能靠签名比对兜底）。
+        // 返回 null 表示当前无可用壁纸文件。
+        public static string? GetWallpaperSignature()
+        {
+            var p = GetWallpaperPath();
+            if (p == null) return null;
+            try { return p + "|" + File.GetLastWriteTimeUtc(p).Ticks; }
+            catch { return p; }
         }
 
         // 计算半透明【玻璃】背景色（#AARRGGBB）；找不到壁纸返回 null（不覆盖用户颜色）。

@@ -45,16 +45,9 @@
                 <Grid.ContextMenu>
                     <ContextMenu Opened="TitleCtx_Opened">
                         <MenuItem Header="重命名" Click="MenuRename_Click"/>
-                        <MenuItem Header="配置" Click="MenuConfig_Click"/>
-                        <!-- 主题：浅色/深色固定预设、自适应=跟随桌面壁纸明暗、自定义=手动样式（四者互斥，勾选按 UseWallpaperTint/当前色推导） -->
-                        <MenuItem Header="主题">
-                            <MenuItem x:Name="ThemeAdaptive" Header="自适应" Tag="Adaptive" IsCheckable="True" Click="MenuTheme_Click"/>
-                            <Separator/>
-                            <MenuItem x:Name="ThemeLight" Header="浅色" Tag="Light" IsCheckable="True" Click="MenuTheme_Click"/>
-                            <MenuItem x:Name="ThemeDark" Header="深色" Tag="Dark" IsCheckable="True" Click="MenuTheme_Click"/>
-                            <Separator/>
-                            <MenuItem x:Name="ThemeCustom" Header="自定义" Tag="Custom" IsCheckable="True" Click="MenuTheme_Click"/>
-                        </MenuItem>
+                        <!-- 预设主题 / 自定义 都进入配置窗：前者聚焦“预设主题”区，后者聚焦自定义配色区 -->
+                        <MenuItem Header="预设主题" Click="MenuPresetTheme_Click"/>
+                        <MenuItem Header="自定义" Click="MenuCustom_Click"/>
                         <!-- 显示模式（图标/列表）：左键点“…”、右键标题栏都能开菜单调整 -->
                         <MenuItem Header="显示模式">
                             <MenuItem x:Name="LayoutIcon" Header="图标" Tag="Icon" IsCheckable="True" Click="MenuLayout_Click"/>
