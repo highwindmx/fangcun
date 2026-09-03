@@ -673,12 +673,25 @@ namespace Fangcun
         }
 
         // ---------- 右键菜单（围栏） ----------
-        // 「预设主题」「自定义」都进入配置窗：前者聚焦预设主题区、后者聚焦自定义配色区。
+        // 「预设主题」子菜单：自适应/浅色/深色 立即应用；自定义→进入配置窗手动调色。
         // 配置窗里的预设选择会回调本类的 ApplyPresetTheme；手动改色会回调 ExitAdaptive（让自定义粘住）。
-        private void MenuPresetTheme_Click(object sender, RoutedEventArgs e)
-            => new FenceSettingsWindow(_fence, this, "preset").ShowDialog();
-        private void MenuCustom_Click(object sender, RoutedEventArgs e)
+        private void MenuPreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (((MenuItem)sender).Tag is string tag)
+                ApplyPresetTheme(tag);
+            UpdatePresetChecks();
+        }
+        private void MenuConfig_Click(object sender, RoutedEventArgs e)
             => new FenceSettingsWindow(_fence, this, "custom").ShowDialog();
+
+        // 按当前主题给「预设主题」子菜单三项打勾（自适应/浅色/深色，互斥）。
+        private void UpdatePresetChecks()
+        {
+            string th = ResolveTheme(_fence.Style);
+            PresetAdaptive.IsChecked = th == "Adaptive";
+            PresetLight.IsChecked = th == "Light";
+            PresetDark.IsChecked = th == "Dark";
+        }
 
         // 预设主题：浅色/深色=固定预设；自适应=跟随桌面壁纸明暗(UseWallpaperTint)；自定义=把当前样式固定下来、退出自适应。
         // 关键顺序：先清 _tintApplied/_manual*(使关自适应时 RestoreManualBg 直接 return、不还原旧色)，
@@ -759,6 +772,7 @@ namespace Fangcun
             LayoutList.IsChecked = _fence.Style.ItemLayout == "List";
             OverflowScroll.IsChecked = _fence.Overflow == OverflowMode.Scroll;
             OverflowEllipsis.IsChecked = _fence.Overflow == OverflowMode.Ellipsis;
+            UpdatePresetChecks();
         }
 
         // ---------- 显示模式（图标/列表） ----------
