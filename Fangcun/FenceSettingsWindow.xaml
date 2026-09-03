@@ -39,16 +39,6 @@
         </Grid.RowDefinitions>
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" x:Name="Scroller">
             <StackPanel>
-                <GroupBox Header="预设主题" x:Name="GroupPreset">
-                    <StackPanel>
-                        <RadioButton x:Name="PresetAdaptive" Content="自适应（跟随桌面壁纸明暗）" GroupName="Preset" Tag="Adaptive" Checked="Preset_Checked"/>
-                        <RadioButton x:Name="PresetLight" Content="浅色" GroupName="Preset" Tag="Light" Margin="0,4,0,0" Checked="Preset_Checked"/>
-                        <RadioButton x:Name="PresetDark" Content="深色" GroupName="Preset" Tag="Dark" Margin="0,4,0,0" Checked="Preset_Checked"/>
-                        <TextBlock Text="选「自适应」后围栏背景随桌面壁纸明暗自动变化；选浅/深为固定预设；手动改下方配色会自动退出自适应。" 
-                                   TextWrapping="Wrap" Foreground="#888" FontSize="11" Margin="0,6,0,0"/>
-                    </StackPanel>
-                </GroupBox>
-
                 <GroupBox Header="背景样式" x:Name="GroupCustom">
                     <Grid>
                         <Grid.ColumnDefinitions>

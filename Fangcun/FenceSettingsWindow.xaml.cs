@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Forms; // ColorDialog (WinForms)
 using Color = System.Windows.Media.Color;
 
@@ -10,7 +9,7 @@ namespace Fangcun
     {
         private readonly Fence _fence;
         private readonly FenceWindow? _owner;   // 围栏窗口，用于回调预设应用 / 退出自适应
-        private readonly string? _focus;        // "preset"=聚焦预设主题区；"custom"=聚焦自定义配色区
+        private readonly string? _focus;        // "custom"=进入配置窗后聚焦自定义配色区
 
         public FenceSettingsWindow(Fence fence, FenceWindow? owner = null, string? focus = null)
         {
@@ -30,33 +29,18 @@ namespace Fangcun
             Closed += (_, _) => App.Save();
             Loaded += (_, _) =>
             {
-                // 预设区初值：按当前主题勾选；手动改过配色（非任一预设）→ 都不勾。
-                string th = FenceWindow.ResolveTheme(_fence.Style);
-                PresetAdaptive.IsChecked = th == "Adaptive";
-                PresetLight.IsChecked = th == "Light";
-                PresetDark.IsChecked = th == "Dark";
-                // 按入口把对应区滚入视野
-                if (_focus == "preset") GroupPreset.BringIntoView();
-                else if (_focus == "custom") GroupCustom.BringIntoView();
+                // 「自定义」入口：把配色区滚入视野（该窗不再含预设区，预设在右键「预设主题」子菜单）。
+                if (_focus == "custom") GroupCustom.BringIntoView();
             };
         }
 
         public FenceStyle Cfg => _fence.Style;
         public List<string> Fonts { get; }
 
-        // 预设主题选择：回调围栏窗口应用（自适应/浅/深）。
-        private void Preset_Checked(object sender, RoutedEventArgs e)
-        {
-            if (((System.Windows.Controls.RadioButton)sender).Tag is string tag)
-                _owner?.ApplyPresetTheme(tag);
-        }
-
-        // 手动改自定义配色（文本失去焦点）：退出自适应，使手填色不被后续壁纸重算覆盖；同时取消预设勾选以保持 UI 一致。
+        // 手动改自定义配色（文本失去焦点）：退出自适应，使手填色不被后续壁纸重算覆盖。
+        // 右键「预设主题」子菜单会据 ResolveTheme 把「自定义」项打勾，反映当前为自定义状态。
         private void CustomColor_LostFocus(object sender, RoutedEventArgs e)
-        {
-            _owner?.ExitAdaptive();
-            PresetAdaptive.IsChecked = PresetLight.IsChecked = PresetDark.IsChecked = false;
-        }
+            => _owner?.ExitAdaptive();
 
         private void PickTitleColor_Click(object sender, RoutedEventArgs e)
         {

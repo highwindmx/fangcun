@@ -51,7 +51,7 @@
                             <MenuItem x:Name="PresetLight" Header="浅色" Tag="Light" IsCheckable="True" Click="MenuPreset_Click"/>
                             <MenuItem x:Name="PresetDark" Header="深色" Tag="Dark" IsCheckable="True" Click="MenuPreset_Click"/>
                             <Separator/>
-                            <MenuItem x:Name="PresetCustom" Header="自定义" Click="MenuConfig_Click"/>
+                            <MenuItem x:Name="PresetCustom" Header="自定义" IsCheckable="True" Click="MenuConfig_Click"/>
                         </MenuItem>
                         <!-- 显示模式（图标/列表）：左键点“…”、右键标题栏都能开菜单调整 -->
                         <MenuItem Header="显示模式">

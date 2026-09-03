@@ -684,13 +684,14 @@ namespace Fangcun
         private void MenuConfig_Click(object sender, RoutedEventArgs e)
             => new FenceSettingsWindow(_fence, this, "custom").ShowDialog();
 
-        // 按当前主题给「预设主题」子菜单三项打勾（自适应/浅色/深色，互斥）。
+        // 按当前主题给「预设主题」子菜单四项打勾（自适应/浅色/深色/自定义，互斥）。
         private void UpdatePresetChecks()
         {
             string th = ResolveTheme(_fence.Style);
             PresetAdaptive.IsChecked = th == "Adaptive";
             PresetLight.IsChecked = th == "Light";
             PresetDark.IsChecked = th == "Dark";
+            PresetCustom.IsChecked = th == "Custom";
         }
 
         // 预设主题：浅色/深色=固定预设；自适应=跟随桌面壁纸明暗(UseWallpaperTint)；自定义=把当前样式固定下来、退出自适应。
