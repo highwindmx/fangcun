@@ -135,7 +135,8 @@
                                         <Path Data="M 4 8 L 18 22 L 32 8" Stroke="White" StrokeThickness="3"
                                               StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                               HorizontalAlignment="Center" Margin="0,6,0,2"/>
-                                        <TextBlock Text="{Binding DisplayName}" Foreground="White"
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   Foreground="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ItemColor, Converter={StaticResource BrushConv}}"
                                                    FontSize="11" TextAlignment="Center" TextWrapping="Wrap"/>
                                     </StackPanel>
 
