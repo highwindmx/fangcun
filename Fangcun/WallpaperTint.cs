@@ -80,10 +80,23 @@ namespace Fangcun
         public static string? ComputeBar(System.Windows.Rect? fenceOnPrimary)
             => GlassHex(fenceOnPrimary, isBar: true);
 
-        // 判断围栏下方壁纸区域是否偏暗（感知亮度 Y=0.299R+0.587G+0.114B < 128 → 深色）。
-        // 供"随桌面自适应"开启时自动把条目/标题字体切成白(深底)或黑(浅底)，保证可读。
+        // 字体颜色按【玻璃灰度】判黑/白（而非原始壁纸亮度）。原因：字体实际叠在中性玻璃上，
+        // 而栏底玻璃=v*0.82 比背景玻璃更暗，若按整块区域原始亮度统一判字色，会出现
+        // "整块偏亮判黑字、但栏底被压暗后黑字落在暗栏底看不清"的问题。故：
+        //   背景玻璃灰度 v → 条目字色（v<128 深底→白字，否则黑字）
+        //   栏底玻璃灰度 v*0.82 → 标题/按钮字色（更暗的栏底单独判，深栏底必出白字）
         // 找不到壁纸返回 null（调用方保持当前字色不动）。
-        public static bool? ComputeIsDark(System.Windows.Rect? fenceOnPrimary)
+        public static (string BodyInk, string BarInk)? ComputeInk(System.Windows.Rect? fenceOnPrimary)
+        {
+            var luma = SampleLuma(fenceOnPrimary);
+            if (luma == null) return null;
+            int v = GlassValue(luma.Value);
+            int vb = (int)(v * 0.82); // 栏底玻璃比背景更暗（与 ComputeBar 同源）
+            return (v < 128 ? "#FFFFFF" : "#000000", vb < 128 ? "#FFFFFF" : "#000000");
+        }
+
+        // 区域平均感知亮度（归一化 0-1），供 ComputeInk 判定字色。复用 SampleRegion。
+        private static double? SampleLuma(System.Windows.Rect? fenceOnPrimary)
         {
             try
             {
@@ -92,8 +105,7 @@ namespace Fangcun
                 using var bmp = new Bitmap(path);
                 var r = SampleRegion(bmp, fenceOnPrimary);
                 if (r.A == 0) return null;
-                double y = 0.299 * r.R + 0.587 * r.G + 0.114 * r.B;
-                return y < 128.0;
+                return (0.299 * r.R + 0.587 * r.G + 0.114 * r.B) / 255.0;
             }
             catch { return null; }
         }

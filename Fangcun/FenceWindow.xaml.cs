@@ -50,6 +50,8 @@ namespace Fangcun
         private string? _lastTintSig;
         // 背景/栏底原始绑定（构造后捕获），变色淡入时临时解绑再于动画结束复原
         private Binding? _bgBinding, _barBinding;
+        // 拖动/缩放 debounce：自适应开启时，移动或缩放围栏后延迟 200ms 重算自适应（避免拖动每帧都 LockBits 采样壁纸卡顿）
+        private readonly DispatcherTimer _tintDebounce = new() { Interval = TimeSpan.FromMilliseconds(200) };
 
         // ---------- 主题预设（浅色/深色），值与"背景样式/栏底/字色"全套匹配 ----------
         // "主题"菜单按"当前 Style 颜色==哪套预设"决定勾选；都不是 → 判为自定义。
@@ -107,6 +109,8 @@ namespace Fangcun
                     RebuildDisplay();
                 }
                 Save();
+                // 自适应开启时，缩放围栏后延迟重算，使背景随所在桌面区域变化（缺陷2）
+                if (_fence.Style.UseWallpaperTint) { _tintDebounce.Stop(); _tintDebounce.Start(); }
             };
             LocationChanged += (_, _) =>
             {
@@ -114,10 +118,19 @@ namespace Fangcun
                 _fence.X = Left;
                 _fence.Y = Top;
                 Save();
+                // 自适应开启时，移动围栏后延迟重算，使背景随所在桌面区域变化（缺陷2）
+                if (_fence.Style.UseWallpaperTint) { _tintDebounce.Stop(); _tintDebounce.Start(); }
             };
 
             _heartbeat.Tick += Heartbeat_Tick;
             _heartbeat.Start();
+
+            // 拖动/缩放后重算自适应：停止操作 200ms 后再算一次，使背景随围栏所在桌面区域变化（缺陷2）
+            _tintDebounce.Tick += (_, _) =>
+            {
+                _tintDebounce.Stop();
+                if (!_closed && _fence.Style.UseWallpaperTint) ApplyWallpaperTint();
+            };
             Log($"FenceWindow ctor: '{_fence.Title}' at ({_fence.X},{_fence.Y}) {_fence.Width}x{_fence.Height}");
             App.RegisterWindow(this); // 供托盘"隐藏/显示所有围栏"
         }
@@ -396,13 +409,14 @@ namespace Fangcun
                     FadeBackground(_barBinding, TitleBar, BackgroundProperty, bar);
                     if (_fence.Style.TitleBarColor != bar) _fence.Style.TitleBarColor = bar;
                 }
-                // 条目字体(及标题/按钮)颜色按背景明暗切黑/白：深底白字、浅底黑字，保证可读。
-                var dark = WallpaperTint.ComputeIsDark(rect);
-                if (dark.HasValue)
+                // 字体颜色按【玻璃灰度】判黑/白（而非原始壁纸亮度）：字体实际叠在玻璃上，
+                // 栏底玻璃=v*0.82 比背景更暗，故标题字单独用栏底玻璃判定，深栏底必出白字，
+                // 根除"整块偏亮判黑字、压暗栏底后看不清"的问题（缺陷1）。
+                var ink = WallpaperTint.ComputeInk(rect);
+                if (ink.HasValue)
                 {
-                    string ink = dark.Value ? "#FFFFFF" : "#000000";
-                    if (_fence.Style.ItemColor != ink) _fence.Style.ItemColor = ink;
-                    if (_fence.Style.TitleColor != ink) _fence.Style.TitleColor = ink;
+                    if (_fence.Style.ItemColor != ink.Value.BodyInk) _fence.Style.ItemColor = ink.Value.BodyInk;
+                    if (_fence.Style.TitleColor != ink.Value.BarInk) _fence.Style.TitleColor = ink.Value.BarInk;
                 }
                 _lastTintSig = WallpaperTint.GetWallpaperSignature(); // 记录当前壁纸签名，供心跳轮询比对
                 Save();
@@ -704,7 +718,7 @@ namespace Fangcun
         {
             _tintApplied = false;
             _manualBg = _manualTitleBar = _manualItemColor = _manualTitleColor = null;
-            if (tag == "Adaptive") _fence.Style.UseWallpaperTint = true; // 触发 Style_PropertyChanged→ApplyWallpaperTint
+            if (tag == "Adaptive") { _fence.Style.UseWallpaperTint = true; ApplyWallpaperTint(); } // 显式重算：即便已为 true（值不变不触发 PropertyChanged）也按当前壁纸/位置刷新
             else if (tag == "Light") { _fence.Style.UseWallpaperTint = false; ApplyThemeColors(LightPreset); }
             else if (tag == "Dark") { _fence.Style.UseWallpaperTint = false; ApplyThemeColors(DarkPreset); }
             // "Custom"：保持现状（自适应已关、颜色未动）
