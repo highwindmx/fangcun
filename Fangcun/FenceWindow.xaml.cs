@@ -154,6 +154,7 @@ namespace Fangcun
             _hwnd = new WindowInteropHelper(this).Handle;
             HwndSource.FromHwnd(_hwnd).AddHook(HwndHook);
             ReparentToDesktop();
+            SetNoActivate(true); // 默认不激活：点击不抢前台焦点，避免所有围栏浮起盖住当前窗口
         }
 
         // ---------- 桌面常驻：把窗口 owner 设为桌面 SHELLDLL_DefView（Win+D 不隐藏） ----------
@@ -189,6 +190,20 @@ namespace Fangcun
             {
                 Log($"Reparent 异常: {ex.GetType().Name}: {ex.Message}");
             }
+        }
+
+        // 不激活样式（WS_EX_NOACTIVATE）：点击围栏不抢前台焦点，Z 序原地不动，绝不盖住正在用的应用窗口。
+        // 重命名编辑态需临时移除该样式并 Activate，使 TextBox 能获取键盘焦点；提交后恢复。
+        private void SetNoActivate(bool enable)
+        {
+            try
+            {
+                int ex = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWLP_EXSTYLE);
+                if (enable) ex |= (int)NativeMethods.WS_EX_NOACTIVATE;
+                else ex &= ~(int)NativeMethods.WS_EX_NOACTIVATE;
+                NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWLP_EXSTYLE, new IntPtr(ex));
+            }
+            catch { }
         }
 
         private static string ClassName(IntPtr h)
@@ -343,6 +358,15 @@ namespace Fangcun
                     handled = true;
                     return IntPtr.Zero;
                 }
+            }
+            if (msg == NativeMethods.WM_MOUSEACTIVATE)
+            {
+                // 重命名编辑态：允许窗口正常激活（焦点已在 TextBox，且样式已临时移除）；
+                // 其他情况：返回 MA_NOACTIVATE，点击不抢前台焦点，围栏保持 Z 序原位、不盖当前窗口。
+                if (TitleEdit.Visibility == Visibility.Visible)
+                    return IntPtr.Zero;
+                handled = true;
+                return new IntPtr(NativeMethods.MA_NOACTIVATE);
             }
             return IntPtr.Zero;
         }
@@ -665,6 +689,8 @@ namespace Fangcun
         // ---------- 重命名（标题） ----------
         private void StartRename()
         {
+            SetNoActivate(false);   // 临时允许激活，使 TextBox 可获取键盘焦点
+            this.Activate();
             TitleEdit.Text = _fence.Title;
             TitleText.Visibility = Visibility.Collapsed;
             TitleEdit.Visibility = Visibility.Visible;
@@ -676,13 +702,14 @@ namespace Fangcun
         private void TitleEdit_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter) CommitRename();
-            else if (e.Key == Key.Escape) { TitleEdit.Visibility = Visibility.Collapsed; TitleText.Visibility = Visibility.Visible; }
+            else if (e.Key == Key.Escape) { TitleEdit.Visibility = Visibility.Collapsed; TitleText.Visibility = Visibility.Visible; SetNoActivate(true); }
         }
         private void CommitRename()
         {
             if (!string.IsNullOrWhiteSpace(TitleEdit.Text)) _fence.Title = TitleEdit.Text;
             TitleEdit.Visibility = Visibility.Collapsed;
             TitleText.Visibility = Visibility.Visible;
+            SetNoActivate(true);    // 恢复默认不激活样式
             Save();
         }
 
