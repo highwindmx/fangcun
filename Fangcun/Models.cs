@@ -8,7 +8,7 @@ using System.Windows.Media;
 
 namespace Fangcun
 {
-    // 溢出模式：滚动（可纵向滚动）/ 软截断（超出项在边缘淡出，不弹提示）/ 轮播（按页分块，底部圆点翻页）
+    // 溢出模式：滚动（默认，可纵向滚动） / 省略（不塞占位格：隐藏滚动条，超出部分由右下角折线角标显示被裁数量，点击角标向下撑大显示全部）
     public enum OverflowMode { Scroll, Ellipsis }
 
     public abstract class ViewModelBase : INotifyPropertyChanged

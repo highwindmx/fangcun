@@ -27,8 +27,8 @@ namespace Fangcun
         private readonly Fence _fence;
         private FenceItem? _dragItem;
         private Point _dragStart;
+        private bool _expanded;          // 角标向下撑大（展开全部）态：点击后保持显示全部；用户手动缩回则自动退回截断态
         private double _normalHeight;
-        private ObservableCollection<FenceItem>? _display;
 
         // 心跳：reparent 态下检测桌面父窗口（Explorer 重启）失效则重挂
         private readonly DispatcherTimer _heartbeat = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -84,8 +84,6 @@ namespace Fangcun
                 else if (e.PropertyName == nameof(Fence.Overflow))
                     ApplyOverflowMode();
             };
-            // 内容尺寸/视口变化后重算软截断渐隐遮罩（如拖拽缩放围栏、增删条目触发布局）
-            Scroller.ScrollChanged += (_, _) => UpdateOverflowMask();
             ApplyOverflowMode();
 
             // 随桌面自适应：勾选/取消时实时覆盖或还原背景；监听系统壁纸变更自动刷新
@@ -106,9 +104,8 @@ namespace Fangcun
                 _fence.Width = ActualWidth;
                 _fence.Height = ActualHeight;
                 ApplyClip();
-                // 非滚动模式：容量随尺寸变化，需重算页数/遮罩并重建显示
-                if (_fence.Overflow != OverflowMode.Scroll)
-                    RebuildDisplay();
+                // 省略模式：布局/尺寸变化后刷新右下角截断计数角标
+                if (_fence.Overflow == OverflowMode.Ellipsis) RefreshBadge();
                 Save();
                 // 自适应开启时，缩放围栏后延迟重算，使背景随所在桌面区域变化（缺陷2）
                 if (_fence.Style.UseWallpaperTint) { _tintDebounce.Stop(); _tintDebounce.Start(); }
@@ -485,49 +482,68 @@ namespace Fangcun
             }
         }
 
-        // ---------- 溢出模式 ----------
+        // ---------- 溢出模式（省略 = 右下角截断计数角标，不塞占位格） ----------
         private void ApplyOverflowMode()
         {
-            if (_fence.Overflow == OverflowMode.Scroll)
+            // 两种模式都直接绑定全部条目；省略模式仅隐藏滚动条，溢出由右下角角标承载（不再插入"还有 N 项"占位格）
+            ItemsHost.ItemsSource = _fence.Items;
+            Scroller.VerticalScrollBarVisibility = _fence.Overflow == OverflowMode.Ellipsis
+                ? ScrollBarVisibility.Hidden
+                : ScrollBarVisibility.Auto;
+            if (_fence.Overflow != OverflowMode.Ellipsis)
             {
-                Scroller.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
-                ItemsHost.ItemsSource = _fence.Items;
-                Scroller.OpacityMask = null;
-                _display = null;
-                return;
+                _expanded = false;
+                TruncBadge.Visibility = Visibility.Collapsed;
             }
-            // 软截断：隐藏滚动条，由边缘渐隐遮罩承载溢出（不弹提示）
-            Scroller.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
-            _display ??= new ObservableCollection<FenceItem>();
-            ItemsHost.ItemsSource = _display;
-            RebuildDisplay();
+            ScheduleBadgeUpdate();
         }
 
-        private void RebuildDisplay()
+        // 布局完成后再测真实可见条目数：枚举条目容器，任一轴越出 Scroller 视口者即被截断。
+        // 同时统计向下（底部溢出）与向右（右侧溢出）两种截断，根除去"最右图标凭空消失却不计"的旧不对称。
+        private void ScheduleBadgeUpdate()
+            => Scroller.Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)RefreshBadge);
+
+        private void RefreshBadge()
         {
-            if (_display == null) return;
-            _display.Clear();
-            // 软截断：显示全部图标，溢出由边缘渐隐遮罩承载（不弹提示、不翻页）
-            foreach (var it in _fence.Items) _display.Add(it);
-            // 遮罩需在布局完成后测量真实溢出，故延迟到下一布局周期执行
-            Scroller.Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)UpdateOverflowMask);
+            if (_fence.Overflow != OverflowMode.Ellipsis) { TruncBadge.Visibility = Visibility.Collapsed; return; }
+            int truncated = CountTruncated();
+            // 已向下撑大：若用户又把围栏缩到放不下全部，则退回截断态显示角标；否则保持隐藏
+            if (_expanded && truncated > 0) _expanded = false;
+            if (_expanded) { TruncBadge.Visibility = Visibility.Collapsed; return; }
+            if (truncated > 0) { TruncBadgeText.Text = truncated.ToString(); TruncBadge.Visibility = Visibility.Visible; }
+            else TruncBadge.Visibility = Visibility.Collapsed;
         }
 
-        // 软截断模式：检测内容是否真实溢出视口。
-        // 用 ScrollViewer 实测的 Extent/Viewport（而非容量公式——容量公式会高估导致溢出判定失准、遮罩不触发），
-        // 溢出时在视口【底部】施加竖向渐隐遮罩，让最后一行被裁的图标淡出（软截断），不弹任何提示。
-        // 注意 OpacityMask 取的是画刷的【alpha 通道】：必须以 Colors.Transparent(alpha=0) 作淡出端；
-        // 用 Colors.Black(alpha 仍为 255) 是无效遮罩（两端都不透明），这是之前软截断“毫无渐隐”的真正根因。
-        private void UpdateOverflowMask()
+        private int CountTruncated()
         {
-            if (_fence.Overflow != OverflowMode.Ellipsis) { Scroller.OpacityMask = null; return; }
-            bool overflow = Scroller.ScrollableHeight > 0.5 || Scroller.ScrollableWidth > 0.5;
-            if (!overflow) { Scroller.OpacityMask = null; return; }
-            var m = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
-            m.GradientStops.Add(new GradientStop(Colors.White, 0.0));
-            m.GradientStops.Add(new GradientStop(Colors.White, 0.82));
-            m.GradientStops.Add(new GradientStop(Colors.Transparent, 1.0));
-            Scroller.OpacityMask = m;
+            int n = 0;
+            for (int i = 0; i < _fence.Items.Count; i++)
+            {
+                if (ItemsHost.ItemContainerGenerator.ContainerFromIndex(i) is not FrameworkElement cp || cp.ActualHeight <= 0) continue;
+                var pt = cp.TranslatePoint(new Point(0, 0), Scroller);
+                bool bottomOut = pt.Y + cp.ActualHeight > Scroller.ViewportHeight + 0.5;
+                bool topOut = pt.Y < -0.5;
+                bool rightOut = pt.X + cp.ActualWidth > Scroller.ViewportWidth + 0.5;
+                bool leftOut = pt.X < -0.5;
+                if (bottomOut || topOut || rightOut || leftOut) n++;
+            }
+            return n;
+        }
+
+        // 点击右下角角标：向下撑大显示全部并持久化新高度（不再缩回）；若围栏足够放下则角标自动隐藏，
+        // 若受工作区高度限制放不下全部，则保持截断态、角标继续显示剩余数量。
+        private void TruncBadge_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (_fence.Overflow != OverflowMode.Ellipsis || _expanded) return;
+            double needed = 16 + TitleBar.ActualHeight + Scroller.ExtentHeight;
+            double maxH = SystemParameters.WorkArea.Height - Top;
+            double h = Math.Min(needed, Math.Max(_fence.Height, maxH));
+            Height = h;
+            _fence.Height = h;
+            _expanded = true;
+            Save();
+            RefreshBadge();
+            e.Handled = true;
         }
 
         // ---------- 条目增删/排序 ----------
@@ -537,7 +553,7 @@ namespace Fangcun
                 _fence.Items.Add(new FenceItem { Path = p, DisplayName = Path.GetFileName(p) ?? p });
             Reindex();
             Save();
-            if (_fence.Overflow != OverflowMode.Scroll) RebuildDisplay();
+            ScheduleBadgeUpdate();
         }
 
         private void MoveItem(FenceItem dragged, FenceItem? target)
@@ -550,7 +566,7 @@ namespace Fangcun
             _fence.Items.Move(oldIndex, newIndex);
             Reindex();
             Save();
-            if (_fence.Overflow != OverflowMode.Scroll) RebuildDisplay();
+            ScheduleBadgeUpdate();
         }
 
         private void Reindex() => _fence.Items.Select((it, i) => { it.Order = i; return it; }).ToList();
@@ -627,7 +643,6 @@ namespace Fangcun
 
         private void OpenItem(FenceItem item)
         {
-            if (item.IsEllipsis) { RebuildDisplay(); return; }
             try { Process.Start(new ProcessStartInfo(item.Path) { UseShellExecute = true }); } catch { }
         }
 
@@ -670,7 +685,7 @@ namespace Fangcun
             _fence.Items.Remove(it);
             Reindex();
             Save();
-            if (_fence.Overflow != OverflowMode.Scroll) RebuildDisplay();
+            ScheduleBadgeUpdate();
         }
 
         // ---------- 折叠 ----------
@@ -791,9 +806,7 @@ namespace Fangcun
         private void MenuOverflow_Click(object sender, RoutedEventArgs e)
         {
             if (((MenuItem)sender).Tag is string tag && Enum.TryParse<OverflowMode>(tag, out var m))
-            {
-                _fence.Overflow = m; Save();
-            }
+            { _fence.Overflow = m; Save(); }
         }
         private void MenuDelete_Click(object sender, RoutedEventArgs e)
         {
