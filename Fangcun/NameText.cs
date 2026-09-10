@@ -24,19 +24,24 @@ namespace Fangcun
                 new FrameworkPropertyMetadata(Brushes.White, FrameworkPropertyMetadataOptions.AffectsRender));
         public Brush Foreground { get => (Brush)GetValue(ForegroundProperty); set => SetValue(ForegroundProperty, value); }
 
+        // 注意：不要从 TextElement.Font*Property.AddOwner —— AddOwner 继承的默认元数据在运行时会触发
+        // "默认值类型与 FontFamily 属性的类型不匹配" 的类型初始化器异常。这里直接 Register 自有依赖属性并显式给出正确类型的默认值。
         public static readonly DependencyProperty FontFamilyProperty =
-            TextElement.FontFamilyProperty.AddOwner(typeof(NameText),
-                new FrameworkPropertyMetadata(FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
+            DependencyProperty.Register(nameof(FontFamily), typeof(FontFamily), typeof(NameText),
+                new FrameworkPropertyMetadata(SystemFonts.MessageFontFamily,
+                    FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
         public FontFamily FontFamily { get => (FontFamily)GetValue(FontFamilyProperty); set => SetValue(FontFamilyProperty, value); }
 
         public static readonly DependencyProperty FontSizeProperty =
-            TextElement.FontSizeProperty.AddOwner(typeof(NameText),
-                new FrameworkPropertyMetadata(11d, FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
+            DependencyProperty.Register(nameof(FontSize), typeof(double), typeof(NameText),
+                new FrameworkPropertyMetadata(11d,
+                    FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
         public double FontSize { get => (double)GetValue(FontSizeProperty); set => SetValue(FontSizeProperty, value); }
 
         public static readonly DependencyProperty FontWeightProperty =
-            TextElement.FontWeightProperty.AddOwner(typeof(NameText),
-                new FrameworkPropertyMetadata(FontWeights.Normal, FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
+            DependencyProperty.Register(nameof(FontWeight), typeof(FontWeight), typeof(NameText),
+                new FrameworkPropertyMetadata(FontWeights.Normal,
+                    FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
         public FontWeight FontWeight { get => (FontWeight)GetValue(FontWeightProperty); set => SetValue(FontWeightProperty, value); }
 
         public static readonly DependencyProperty TextAlignmentProperty =
