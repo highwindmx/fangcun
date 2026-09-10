@@ -30,6 +30,7 @@ namespace Fangcun
         private bool _ellipsisExpanded;
         private double _normalHeight;
         private ObservableCollection<FenceItem>? _display;
+        private int _pageIndex = 0; // 轮播模式当前页索引
 
         // 心跳：reparent 态下检测桌面父窗口（Explorer 重启）失效则重挂
         private readonly DispatcherTimer _heartbeat = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -529,6 +530,55 @@ namespace Fangcun
             return cols * rows;
         }
 
+        // 软截断模式：当真实溢出时，在内容区右下角施加对角渐隐遮罩，让超出的图标淡出（暗示被裁、不弹提示）。
+        // 仅 Count>cap 才启用；内容未溢出则清除，避免正常项被误淡出。
+        private void ApplyFadeMask()
+        {
+            int cap = ComputeCapacity();
+            if (_fence.Overflow == OverflowMode.Ellipsis && _fence.Items.Count > cap && cap > 1)
+            {
+                var m = new LinearGradientBrush(Colors.White, Colors.Black, new Point(0, 0), new Point(1, 1));
+                m.GradientStops.Clear();
+                m.GradientStops.Add(new GradientStop(Colors.White, 0.0));
+                m.GradientStops.Add(new GradientStop(Colors.White, 0.80));
+                m.GradientStops.Add(new GradientStop(Colors.Black, 1.0));
+                Scroller.OpacityMask = m;
+            }
+            else
+                Scroller.OpacityMask = null;
+        }
+
+        // 轮播模式：按当前 cap 计算页数，生成底部小圆点；当前页高亮，点击切换。
+        private void BuildPager(int cap)
+        {
+            PagerDots.Children.Clear();
+            int pages = (int)Math.Ceiling((double)_fence.Items.Count / Math.Max(1, cap));
+            if (pages <= 1) { PagerDots.Visibility = Visibility.Collapsed; return; }
+            PagerDots.Visibility = Visibility.Visible;
+            for (int p = 0; p < pages; p++)
+            {
+                var dot = new Ellipse
+                {
+                    Width = 8, Height = 8, Margin = new Thickness(3, 0, 3, 0),
+                    Fill = p == _pageIndex ? Brushes.White : Brushes.Gray,
+                    Stroke = Brushes.Gray, StrokeThickness = 1,
+                    Cursor = Cursors.Hand
+                };
+                int page = p;
+                dot.MouseLeftButtonDown += (_, _) => SetCarouselPage(page);
+                PagerDots.Children.Add(dot);
+            }
+        }
+
+        private void SetCarouselPage(int page)
+        {
+            int cap = ComputeCapacity();
+            int pages = (int)Math.Ceiling((double)_fence.Items.Count / Math.Max(1, cap));
+            if (pages <= 0) return;
+            _pageIndex = Math.Max(0, Math.Min(page, pages - 1));
+            RebuildDisplay();
+        }
+
         // ---------- 条目增删/排序 ----------
         private void AddPaths(string[] paths)
         {
@@ -536,7 +586,7 @@ namespace Fangcun
                 _fence.Items.Add(new FenceItem { Path = p, DisplayName = Path.GetFileName(p) ?? p });
             Reindex();
             Save();
-            if (_fence.Overflow == OverflowMode.Ellipsis) RebuildDisplay();
+            if (_fence.Overflow != OverflowMode.Scroll) RebuildDisplay();
         }
 
         private void MoveItem(FenceItem dragged, FenceItem? target)
@@ -549,7 +599,7 @@ namespace Fangcun
             _fence.Items.Move(oldIndex, newIndex);
             Reindex();
             Save();
-            if (_fence.Overflow == OverflowMode.Ellipsis) RebuildDisplay();
+            if (_fence.Overflow != OverflowMode.Scroll) RebuildDisplay();
         }
 
         private void Reindex() => _fence.Items.Select((it, i) => { it.Order = i; return it; }).ToList();
@@ -669,7 +719,7 @@ namespace Fangcun
             _fence.Items.Remove(it);
             Reindex();
             Save();
-            if (_fence.Overflow == OverflowMode.Ellipsis) RebuildDisplay();
+            if (_fence.Overflow != OverflowMode.Scroll) RebuildDisplay();
         }
 
         // ---------- 折叠 ----------
@@ -790,7 +840,10 @@ namespace Fangcun
         private void MenuOverflow_Click(object sender, RoutedEventArgs e)
         {
             if (((MenuItem)sender).Tag is string tag && Enum.TryParse<OverflowMode>(tag, out var m))
-            { _fence.Overflow = m; Save(); }
+            {
+                if (m == OverflowMode.Carousel) _pageIndex = 0;
+                _fence.Overflow = m; Save();
+            }
         }
         private void MenuDelete_Click(object sender, RoutedEventArgs e)
         {

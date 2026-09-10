@@ -60,7 +60,8 @@
                         </MenuItem>
                         <MenuItem Header="溢出模式">
                             <MenuItem x:Name="OverflowScroll" Header="滚动" Tag="Scroll" IsCheckable="True" Click="MenuOverflow_Click"/>
-                            <MenuItem x:Name="OverflowEllipsis" Header="省略" Tag="Ellipsis" IsCheckable="True" Click="MenuOverflow_Click"/>
+                            <MenuItem x:Name="OverflowEllipsis" Header="软截断" Tag="Ellipsis" IsCheckable="True" Click="MenuOverflow_Click"/>
+                            <MenuItem x:Name="OverflowCarousel" Header="轮播" Tag="Carousel" IsCheckable="True" Click="MenuOverflow_Click"/>
                         </MenuItem>
                         <MenuItem Header="删除围栏" Click="MenuDelete_Click"/>
                         <Separator/>
