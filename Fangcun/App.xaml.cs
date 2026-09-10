@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Forms;
@@ -101,7 +102,8 @@ namespace Fangcun
                 foreach (var fence in Config.Fences)
                 {
                     EnsureOnScreen(fence, i++);
-                    new FenceWindow(fence).Show();
+                    var w = new FenceWindow(fence, sendToBackOnLoad: true);
+                    w.Show();
                 }
 
                 SetupTray();
@@ -232,23 +234,31 @@ namespace Fangcun
 
         public static void Save() => Persistence.Save(Config);
 
-        // 防止历史版本把围栏坐标/尺寸写成离屏或异常值（如 reparent 失败期间写回的 -2106 / 106x63），
-        // 导致窗口跑到屏幕外看不见。围栏 reparent 到【主屏】WorkerW，只能落在主屏工作区内，
-        // 因此用【主屏工作区】判定，而非虚拟屏幕（虚拟屏幕在多显示器下含负坐标，会把离屏/污染坐标误判为“在屏内”）。
+        // 防止历史版本把围栏坐标写成离屏/污染值（-2106 / 106x63）跑到屏外看不见。
+        // 多显示器：逐屏比对工作区，副屏围栏保持在其所在屏幕（不再被误判离屏拽回主屏）；
+        // 仅当完全不在任何屏幕工作区内才归位主屏。
         private static void EnsureOnScreen(Fence fence, int index)
         {
-            var wa = SystemParameters.WorkArea; // 主显示器工作区（任务栏外）
-            bool off = fence.X + fence.Width <= wa.Left || fence.X >= wa.Right ||
-                       fence.Y + fence.Height <= wa.Top || fence.Y >= wa.Bottom;
-            if (off)
+            var screens = Screen.AllScreens;
+            // 1) 围栏左上角所在屏幕
+            Screen? target = screens.FirstOrDefault(s => s.WorkingArea.Contains((int)fence.X, (int)fence.Y));
+            // 2) 否则取与围栏相交的屏幕（半跨屏）
+            if (target == null)
             {
-                // 完全离屏（含负坐标污染）→ 归位到主屏左上，依次错开
+                var rect = new Rectangle((int)fence.X, (int)fence.Y, (int)fence.Width, (int)fence.Height);
+                target = screens.FirstOrDefault(s => Rectangle.Intersect(rect, s.WorkingArea).Width > 0);
+            }
+            if (target == null)
+            {
+                // 完全在所有屏幕外（含历史污染坐标）→ 归位主屏左上，依次错开
+                var wa = Screen.PrimaryScreen!.WorkingArea;
                 fence.X = wa.Left + 40 + index * 28;
                 fence.Y = wa.Top + 40 + index * 28;
             }
             else
             {
-                // 半出屏 → 夹取回工作区内
+                // 夹取回目标屏幕工作区内（处理跨屏残留/半出屏）
+                var wa = target.WorkingArea;
                 if (fence.X < wa.Left) fence.X = wa.Left + 8;
                 if (fence.Y < wa.Top) fence.Y = wa.Top + 8;
                 if (fence.X + fence.Width > wa.Right) fence.X = wa.Right - fence.Width - 8;

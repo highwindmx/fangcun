@@ -45,6 +45,7 @@ namespace Fangcun
         private string? _manualTitleColor;  // 随桌面自适应关闭时要还原的手动标题/按钮字色
         private bool _tintApplied;          // 是否已把 BgColor/TitleBarColor/字色覆盖为壁纸自适应值
         private bool _closed;
+        private readonly bool _sendBackOnLoad; // 启动还原的围栏：Loaded 后沉到桌面层，不盖住正在用的应用窗口
 
         // 壁纸轮询：记录上次壁纸签名（路径|时间戳），心跳比对变化时重算自适应（兜底第三方换壁纸不触发系统事件）
         private string? _lastTintSig;
@@ -58,9 +59,10 @@ namespace Fangcun
         private static readonly (string Bg, string Bar, string Ink) DarkPreset = ("#80000000", "#33000000", "#FFFFFF");
         private static readonly (string Bg, string Bar, string Ink) LightPreset = ("#99FFFFFF", "#C0FFFFFF", "#000000");
 
-        public FenceWindow(Fence fence)
+        public FenceWindow(Fence fence, bool sendToBackOnLoad = false)
         {
             _fence = fence;
+            _sendBackOnLoad = sendToBackOnLoad;
             DataContext = _fence;
             InitializeComponent();
 
@@ -94,6 +96,8 @@ namespace Fangcun
             {
                 _titleBarHeight = Math.Max(26, TitleBar.ActualHeight);
                 ApplyClip();
+                // 启动还原的围栏：reparent(设 owner=桌面)后沉到桌面层，避免刚启动就盖住用户正在用的窗口
+                if (_sendBackOnLoad) SendToBack();
             };
             SizeChanged += (_, _) =>
             {
@@ -518,10 +522,14 @@ namespace Fangcun
             }
         }
 
+        // 图标态单个条目的真实竖向高度（用于精确算容量，避免"显示满却因硬裁被切掉最后一项"）：
+        // 图标40 + 名距图标上间距2 + 名最多2行(行高≈15) + ItemBorder 上下内边距8 + 容器 Margin 上下8 = 88
+        private const double CellV = 40 + 2 + 2 * 15 + 16;
+
         private int ComputeCapacity()
         {
             int cols = (int)Math.Max(1, Math.Floor((_fence.Width - 12) / (76 + 8)));
-            int rows = (int)Math.Max(1, Math.Floor((_fence.Height - 30 - 12) / (40 + 11 + 16)));
+            int rows = (int)Math.Max(1, Math.Floor((_fence.Height - 30 - 12) / CellV));
             return cols * rows;
         }
 
@@ -836,6 +844,20 @@ namespace Fangcun
                 return;
             }
             NativeMethods.ShowWindow(_hwnd, visible ? NativeMethods.SW_SHOW : NativeMethods.SW_HIDE);
+        }
+
+        // 把窗口沉到 Z 序最底（HWND_BOTTOM）。围栏 owner=桌面 SHELLDLL_DefView，
+        // 沉底后仍保持在桌面之上、普通应用窗口之下（标准桌面 widget 层级），
+        // 启动还原时调用可避免刚启动就浮在用户应用窗口之上。
+        public void SendToBack()
+        {
+            if (_hwnd == IntPtr.Zero) return;
+            try
+            {
+                NativeMethods.SetWindowPos(_hwnd, NativeMethods.HWND_BOTTOM, 0, 0, 0, 0,
+                    NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
+            }
+            catch { }
         }
 
         public new void Close()
