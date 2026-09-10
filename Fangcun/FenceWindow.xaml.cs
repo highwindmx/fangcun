@@ -522,10 +522,32 @@ namespace Fangcun
             }
         }
 
+        // 容量按"实际可见格数"算，而非窗口宽高减常量：
+        // 旧公式 Width-12 / Height-42 漏算 RootBorder(1+6+6+1=14px) 的 inset，且行高常量(67)远小于真实图标格高(~86)，
+        // 导致边界宽度下算出的列/行数比实际渲染多 → 隐藏滚动条的省略模式下多出的项被静默裁掉、又不触发"还有 N 项"。
+        // 改用 Scroller 实测视口尺寸（已含 border/padding inset；省略模式 VerticalScrollBar=Hidden 故不含滚动条），除以真实格尺寸。
+        private const double CellWIcon = 76 + 8;            // 图标: ItemBorder 76 + ContentPresenter Margin 左右4+4
+        private const double CellHIcon = 40 + 2 + 28 + 8 + 8; // 图标: 图40 + 名上距2 + 名2行28 + Border Padding8 + Container Margin8 = 86
+        private const double CellHList = 16 + 8 + 8;        // 列表: 图16 + Border Padding8 + Container Margin8 = 32
+
         private int ComputeCapacity()
         {
-            int cols = (int)Math.Max(1, Math.Floor((_fence.Width - 12) / (76 + 8)));
-            int rows = (int)Math.Max(1, Math.Floor((_fence.Height - 30 - 12) / (40 + 11 + 16)));
+            double availW = Scroller.ActualWidth;
+            double availH = Scroller.ActualHeight;
+            if (availW <= 0) availW = _fence.Width - 14;    // 尚未布局时的兜底（RootBorder inset）
+            if (availH <= 0) availH = _fence.Height - 40;   // 标题栏26 + RootBorder inset14
+
+            int cols, rows;
+            if (_fence.Style.ItemLayout == "List")
+            {
+                cols = 1;
+                rows = (int)Math.Max(1, Math.Floor(availH / (CellHList + 2))); // +2 安全余量，防末排被裁
+            }
+            else // Icon
+            {
+                cols = (int)Math.Max(1, Math.Floor(availW / CellWIcon));
+                rows = (int)Math.Max(1, Math.Floor(availH / (CellHIcon + 2)));
+            }
             return cols * rows;
         }
 
