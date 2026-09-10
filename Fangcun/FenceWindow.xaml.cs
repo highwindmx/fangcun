@@ -11,6 +11,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Data;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using Microsoft.Win32;
 
@@ -106,13 +107,9 @@ namespace Fangcun
                 _fence.Width = ActualWidth;
                 _fence.Height = ActualHeight;
                 ApplyClip();
-                // 省略模式：容量随拖放后尺寸变化，需重算显示。
-                // 展开态若新尺寸已容不下全部条目，则收回省略，避免条目溢出圆角。
-                if (_fence.Overflow == OverflowMode.Ellipsis)
-                {
-                    if (_ellipsisExpanded && _fence.Items.Count > ComputeCapacity()) _ellipsisExpanded = false;
+                // 非滚动模式：容量随尺寸变化，需重算页数/遮罩并重建显示
+                if (_fence.Overflow != OverflowMode.Scroll)
                     RebuildDisplay();
-                }
                 Save();
                 // 自适应开启时，缩放围栏后延迟重算，使背景随所在桌面区域变化（缺陷2）
                 if (_fence.Style.UseWallpaperTint) { _tintDebounce.Stop(); _tintDebounce.Start(); }
@@ -492,18 +489,20 @@ namespace Fangcun
         // ---------- 溢出模式 ----------
         private void ApplyOverflowMode()
         {
-            if (_fence.Overflow == OverflowMode.Ellipsis)
-            {
-                Scroller.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
-                _display ??= new ObservableCollection<FenceItem>();
-                ItemsHost.ItemsSource = _display;
-                RebuildDisplay();
-            }
-            else
+            if (_fence.Overflow == OverflowMode.Scroll)
             {
                 Scroller.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
                 ItemsHost.ItemsSource = _fence.Items;
+                Scroller.OpacityMask = null;
+                PagerDots.Visibility = Visibility.Collapsed;
+                _display = null;
+                return;
             }
+            // 软截断 / 轮播：均走 _display（隐藏滚动条，由渐隐遮罩或翻页圆点承载溢出）
+            Scroller.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
+            _display ??= new ObservableCollection<FenceItem>();
+            ItemsHost.ItemsSource = _display;
+            RebuildDisplay();
         }
 
         private void RebuildDisplay()
@@ -511,22 +510,40 @@ namespace Fangcun
             if (_display == null) return;
             _display.Clear();
             int cap = ComputeCapacity();
-            if (!_ellipsisExpanded && _fence.Items.Count > cap && cap > 1)
+            if (_fence.Overflow == OverflowMode.Carousel && _fence.Items.Count > cap && cap > 1)
             {
-                for (int i = 0; i < cap - 1; i++) _display.Add(_fence.Items[i]);
-                int remaining = _fence.Items.Count - (cap - 1);
-                _display.Add(new FenceItem { IsEllipsis = true, EllipsisCount = remaining, DisplayName = $"还有 {remaining} 项" });
+                // 轮播：按 cap 分页，仅显示当前页；底部圆点翻页
+                int pages = (int)Math.Ceiling((double)_fence.Items.Count / cap);
+                if (_pageIndex >= pages) _pageIndex = pages - 1;
+                if (_pageIndex < 0) _pageIndex = 0;
+                int start = _pageIndex * cap;
+                int end = Math.Min(start + cap, _fence.Items.Count);
+                for (int i = start; i < end; i++) _display.Add(_fence.Items[i]);
+                Scroller.OpacityMask = null;
+                BuildPager(cap);
+            }
+            else if (_fence.Overflow == OverflowMode.Ellipsis)
+            {
+                // 软截断：显示全部，溢出时由边缘渐隐遮罩暗示（不再弹“还有 N 项”）
+                foreach (var it in _fence.Items) _display.Add(it);
+                PagerDots.Visibility = Visibility.Collapsed;
+                ApplyFadeMask();
             }
             else
             {
                 foreach (var it in _fence.Items) _display.Add(it);
+                PagerDots.Visibility = Visibility.Collapsed;
+                Scroller.OpacityMask = null;
             }
         }
 
         private int ComputeCapacity()
         {
             int cols = (int)Math.Max(1, Math.Floor((_fence.Width - 12) / (76 + 8)));
-            int rows = (int)Math.Max(1, Math.Floor((_fence.Height - 30 - 12) / (40 + 11 + 16)));
+            double rowH = 40 + 11 + 16;                 // 图标格高 ≈ 67
+            double availH = _fence.Height - 30 - 12;
+            if (_fence.Overflow == OverflowMode.Carousel) availH -= 18; // 底部翻页圆点条预留高度
+            int rows = (int)Math.Max(1, Math.Floor(availH / rowH));
             return cols * rows;
         }
 
@@ -871,6 +888,7 @@ namespace Fangcun
             LayoutList.IsChecked = _fence.Style.ItemLayout == "List";
             OverflowScroll.IsChecked = _fence.Overflow == OverflowMode.Scroll;
             OverflowEllipsis.IsChecked = _fence.Overflow == OverflowMode.Ellipsis;
+            OverflowCarousel.IsChecked = _fence.Overflow == OverflowMode.Carousel;
             UpdatePresetChecks();
         }
 

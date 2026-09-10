@@ -15,6 +15,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- 标题栏 -->
@@ -186,6 +187,11 @@
                     Margin="0,0,2,2" IsHitTestVisible="False" Opacity="0.5">
                 <Path Data="M 0 14 L 14 14 L 14 0" Stroke="#CCFFFFFF" StrokeThickness="2"/>
             </Border>
+
+            <!-- 轮播翻页圆点：仅轮播模式多页时显示（Visibility 由代码控制） -->
+            <StackPanel x:Name="PagerDots" Grid.Row="2" Orientation="Horizontal"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Margin="0,2,0,2" Visibility="Collapsed"/>
         </Grid>
     </Border>
 </Window>
