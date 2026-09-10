@@ -506,7 +506,7 @@ namespace Fangcun
             if (_display == null) return;
             _display.Clear();
             int cap = ComputeCapacity();
-            if (!_ellipsisExpanded && _fence.Items.Count > cap && cap > 1)
+            if (!_ellipsisExpanded && _fence.Items.Count >= cap && cap > 1)
             {
                 for (int i = 0; i < cap - 1; i++) _display.Add(_fence.Items[i]);
                 int remaining = _fence.Items.Count - (cap - 1);
