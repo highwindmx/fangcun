@@ -11,7 +11,6 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Data;
-using System.Windows.Shapes;
 using System.Windows.Threading;
 using Microsoft.Win32;
 
@@ -28,7 +27,6 @@ namespace Fangcun
         private readonly Fence _fence;
         private FenceItem? _dragItem;
         private Point _dragStart;
-        private bool _ellipsisExpanded;
         private double _normalHeight;
         private ObservableCollection<FenceItem>? _display;
         private int _pageIndex = 0; // 轮播模式当前页索引
@@ -574,7 +572,7 @@ namespace Fangcun
             PagerDots.Visibility = Visibility.Visible;
             for (int p = 0; p < pages; p++)
             {
-                var dot = new Ellipse
+                var dot = new System.Windows.Shapes.Ellipse
                 {
                     Width = 8, Height = 8, Margin = new Thickness(3, 0, 3, 0),
                     Fill = p == _pageIndex ? Brushes.White : Brushes.Gray,
@@ -693,7 +691,7 @@ namespace Fangcun
 
         private void OpenItem(FenceItem item)
         {
-            if (item.IsEllipsis) { _ellipsisExpanded = true; RebuildDisplay(); return; }
+            if (item.IsEllipsis) { RebuildDisplay(); return; }
             try { Process.Start(new ProcessStartInfo(item.Path) { UseShellExecute = true }); } catch { }
         }
 
