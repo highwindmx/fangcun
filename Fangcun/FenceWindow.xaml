@@ -149,12 +149,12 @@
                                             </MultiBinding>
                                         </StackPanel.Visibility>
                                         <Image Source="{Binding IconSource}" Width="40" Height="40" Stretch="Uniform"/>
-                                        <local:NameText Text="{Binding DisplayName}"
-                                                        Foreground="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ItemColor, Converter={StaticResource BrushConv}}"
-                                                        FontFamily="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ItemFontFamily}"
-                                                        FontSize="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ItemFontSize}"
-                                                        TextAlignment="Center" MaxLines="2" Margin="0,2,0,0"
-                                                        Visibility="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ShowItemName, Converter={StaticResource BoolToVis}}"/>
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   Foreground="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ItemColor, Converter={StaticResource BrushConv}}"
+                                                   FontFamily="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ItemFontFamily}"
+                                                   FontSize="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ItemFontSize}"
+                                                   TextWrapping="Wrap" TextAlignment="Center" MaxHeight="28" Margin="0,2,0,0"
+                                                   Visibility="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ShowItemName, Converter={StaticResource BoolToVis}}"/>
                                     </StackPanel>
 
                                     <!-- 列表布局 -->

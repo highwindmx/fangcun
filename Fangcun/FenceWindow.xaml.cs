@@ -522,14 +522,10 @@ namespace Fangcun
             }
         }
 
-        // 图标态单个条目的真实竖向高度（用于精确算容量，避免"显示满却因硬裁被切掉最后一项"）：
-        // 图标40 + 名距图标上间距2 + 名最多2行(行高≈15) + ItemBorder 上下内边距8 + 容器 Margin 上下8 = 88
-        private const double CellV = 40 + 2 + 2 * 15 + 16;
-
         private int ComputeCapacity()
         {
             int cols = (int)Math.Max(1, Math.Floor((_fence.Width - 12) / (76 + 8)));
-            int rows = (int)Math.Max(1, Math.Floor((_fence.Height - 30 - 12) / CellV));
+            int rows = (int)Math.Max(1, Math.Floor((_fence.Height - 30 - 12) / (40 + 11 + 16)));
             return cols * rows;
         }
 
