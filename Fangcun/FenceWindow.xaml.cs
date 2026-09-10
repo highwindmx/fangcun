@@ -29,7 +29,6 @@ namespace Fangcun
         private Point _dragStart;
         private double _normalHeight;
         private ObservableCollection<FenceItem>? _display;
-        private int _pageIndex = 0; // 轮播模式当前页索引
 
         // 心跳：reparent 态下检测桌面父窗口（Explorer 重启）失效则重挂
         private readonly DispatcherTimer _heartbeat = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -85,6 +84,8 @@ namespace Fangcun
                 else if (e.PropertyName == nameof(Fence.Overflow))
                     ApplyOverflowMode();
             };
+            // 内容尺寸/视口变化后重算软截断渐隐遮罩（如拖拽缩放围栏、增删条目触发布局）
+            Scroller.ScrollChanged += (_, _) => UpdateOverflowMask();
             ApplyOverflowMode();
 
             // 随桌面自适应：勾选/取消时实时覆盖或还原背景；监听系统壁纸变更自动刷新
@@ -492,11 +493,10 @@ namespace Fangcun
                 Scroller.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
                 ItemsHost.ItemsSource = _fence.Items;
                 Scroller.OpacityMask = null;
-                PagerDots.Visibility = Visibility.Collapsed;
                 _display = null;
                 return;
             }
-            // 软截断 / 轮播：均走 _display（隐藏滚动条，由渐隐遮罩或翻页圆点承载溢出）
+            // 软截断：隐藏滚动条，由边缘渐隐遮罩承载溢出（不弹提示）
             Scroller.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
             _display ??= new ObservableCollection<FenceItem>();
             ItemsHost.ItemsSource = _display;
@@ -507,91 +507,27 @@ namespace Fangcun
         {
             if (_display == null) return;
             _display.Clear();
-            int cap = ComputeCapacity();
-            if (_fence.Overflow == OverflowMode.Carousel && _fence.Items.Count > cap && cap > 1)
-            {
-                // 轮播：按 cap 分页，仅显示当前页；底部圆点翻页
-                int pages = (int)Math.Ceiling((double)_fence.Items.Count / cap);
-                if (_pageIndex >= pages) _pageIndex = pages - 1;
-                if (_pageIndex < 0) _pageIndex = 0;
-                int start = _pageIndex * cap;
-                int end = Math.Min(start + cap, _fence.Items.Count);
-                for (int i = start; i < end; i++) _display.Add(_fence.Items[i]);
-                Scroller.OpacityMask = null;
-                BuildPager(cap);
-            }
-            else if (_fence.Overflow == OverflowMode.Ellipsis)
-            {
-                // 软截断：显示全部，溢出时由边缘渐隐遮罩暗示（不再弹“还有 N 项”）
-                foreach (var it in _fence.Items) _display.Add(it);
-                PagerDots.Visibility = Visibility.Collapsed;
-                ApplyFadeMask();
-            }
-            else
-            {
-                foreach (var it in _fence.Items) _display.Add(it);
-                PagerDots.Visibility = Visibility.Collapsed;
-                Scroller.OpacityMask = null;
-            }
+            // 软截断：显示全部图标，溢出由边缘渐隐遮罩承载（不弹提示、不翻页）
+            foreach (var it in _fence.Items) _display.Add(it);
+            // 遮罩需在布局完成后测量真实溢出，故延迟到下一布局周期执行
+            Scroller.Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)UpdateOverflowMask);
         }
 
-        private int ComputeCapacity()
+        // 软截断模式：检测内容是否真实溢出视口。
+        // 用 ScrollViewer 实测的 Extent/Viewport（而非容量公式——容量公式会高估导致溢出判定失准、遮罩不触发），
+        // 溢出时在视口【底部】施加竖向渐隐遮罩，让最后一行被裁的图标淡出（软截断），不弹任何提示。
+        // 注意 OpacityMask 取的是画刷的【alpha 通道】：必须以 Colors.Transparent(alpha=0) 作淡出端；
+        // 用 Colors.Black(alpha 仍为 255) 是无效遮罩（两端都不透明），这是之前软截断“毫无渐隐”的真正根因。
+        private void UpdateOverflowMask()
         {
-            int cols = (int)Math.Max(1, Math.Floor((_fence.Width - 12) / (76 + 8)));
-            double rowH = 40 + 11 + 16;                 // 图标格高 ≈ 67
-            double availH = _fence.Height - 30 - 12;
-            if (_fence.Overflow == OverflowMode.Carousel) availH -= 18; // 底部翻页圆点条预留高度
-            int rows = (int)Math.Max(1, Math.Floor(availH / rowH));
-            return cols * rows;
-        }
-
-        // 软截断模式：当真实溢出时，在内容区右下角施加对角渐隐遮罩，让超出的图标淡出（暗示被裁、不弹提示）。
-        // 仅 Count>cap 才启用；内容未溢出则清除，避免正常项被误淡出。
-        private void ApplyFadeMask()
-        {
-            int cap = ComputeCapacity();
-            if (_fence.Overflow == OverflowMode.Ellipsis && _fence.Items.Count > cap && cap > 1)
-            {
-                var m = new LinearGradientBrush(Colors.White, Colors.Black, new Point(0, 0), new Point(1, 1));
-                m.GradientStops.Clear();
-                m.GradientStops.Add(new GradientStop(Colors.White, 0.0));
-                m.GradientStops.Add(new GradientStop(Colors.White, 0.80));
-                m.GradientStops.Add(new GradientStop(Colors.Black, 1.0));
-                Scroller.OpacityMask = m;
-            }
-            else
-                Scroller.OpacityMask = null;
-        }
-
-        // 轮播模式：按当前 cap 计算页数，生成底部小圆点；当前页高亮，点击切换。
-        private void BuildPager(int cap)
-        {
-            PagerDots.Children.Clear();
-            int pages = (int)Math.Ceiling((double)_fence.Items.Count / Math.Max(1, cap));
-            if (pages <= 1) { PagerDots.Visibility = Visibility.Collapsed; return; }
-            PagerDots.Visibility = Visibility.Visible;
-            for (int p = 0; p < pages; p++)
-            {
-                var dot = new System.Windows.Shapes.Ellipse
-                {
-                    Width = 8, Height = 8, Margin = new Thickness(3, 0, 3, 0),
-                    Fill = p == _pageIndex ? Brushes.White : Brushes.Gray,
-                    Stroke = Brushes.Gray, StrokeThickness = 1,
-                    Cursor = Cursors.Hand
-                };
-                int page = p;
-                dot.MouseLeftButtonDown += (_, _) => SetCarouselPage(page);
-                PagerDots.Children.Add(dot);
-            }
-        }
-
-        private void SetCarouselPage(int page)
-        {
-            int cap = ComputeCapacity();
-            int pages = (int)Math.Ceiling((double)_fence.Items.Count / Math.Max(1, cap));
-            if (pages <= 0) return;
-            _pageIndex = Math.Max(0, Math.Min(page, pages - 1));
-            RebuildDisplay();
+            if (_fence.Overflow != OverflowMode.Ellipsis) { Scroller.OpacityMask = null; return; }
+            bool overflow = Scroller.ScrollableHeight > 0.5 || Scroller.ScrollableWidth > 0.5;
+            if (!overflow) { Scroller.OpacityMask = null; return; }
+            var m = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
+            m.GradientStops.Add(new GradientStop(Colors.White, 0.0));
+            m.GradientStops.Add(new GradientStop(Colors.White, 0.82));
+            m.GradientStops.Add(new GradientStop(Colors.Transparent, 1.0));
+            Scroller.OpacityMask = m;
         }
 
         // ---------- 条目增删/排序 ----------
@@ -856,7 +792,6 @@ namespace Fangcun
         {
             if (((MenuItem)sender).Tag is string tag && Enum.TryParse<OverflowMode>(tag, out var m))
             {
-                if (m == OverflowMode.Carousel) _pageIndex = 0;
                 _fence.Overflow = m; Save();
             }
         }
@@ -886,7 +821,6 @@ namespace Fangcun
             LayoutList.IsChecked = _fence.Style.ItemLayout == "List";
             OverflowScroll.IsChecked = _fence.Overflow == OverflowMode.Scroll;
             OverflowEllipsis.IsChecked = _fence.Overflow == OverflowMode.Ellipsis;
-            OverflowCarousel.IsChecked = _fence.Overflow == OverflowMode.Carousel;
             UpdatePresetChecks();
         }
 

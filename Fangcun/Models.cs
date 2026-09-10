@@ -9,7 +9,7 @@ using System.Windows.Media;
 namespace Fangcun
 {
     // 溢出模式：滚动（可纵向滚动）/ 软截断（超出项在边缘淡出，不弹提示）/ 轮播（按页分块，底部圆点翻页）
-    public enum OverflowMode { Scroll, Ellipsis, Carousel }
+    public enum OverflowMode { Scroll, Ellipsis }
 
     public abstract class ViewModelBase : INotifyPropertyChanged
     {
