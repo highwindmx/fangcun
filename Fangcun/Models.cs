@@ -11,6 +11,18 @@ namespace Fangcun
     // 溢出模式：滚动（默认，可纵向滚动） / 省略（不塞占位格：隐藏滚动条，超出部分由右下角折线角标显示被裁数量，点击角标向下撑大显示全部）
     public enum OverflowMode { Scroll, Ellipsis }
 
+    // 层叠模式（围栏相对其他窗口的层级）：
+    // 置底 Bottom = 贴桌面（owner=桌面 SHELLDLL_DefView，Win+D 不隐藏，且沉到普通窗口之下；默认，等同当前行为）
+    // 置顶 Top    = 在置底基础上叠加 WS_EX_TOPMOST，始终置于所有非置顶窗口之上，同时仍 Win+D 免疫
+    // 窗口 Window = 解除桌面 owner，去掉不激活/置顶，成为独立顶层窗口：随普通窗口 z 序、可聚焦、Win+D 会最小化、可 Alt+Tab
+    public enum LayerMode { Bottom, Top, Window }
+
+    // 同步模式（围栏内容来源）：
+    // 手动 Manual = 当前默认状态，条目由用户自由增删/拖拽管理。
+    // 监视 Watch  = 监视某文件夹，按后缀筛选后把该文件夹内的文件（新增/删除/重命名）实时同步进围栏，
+    //               围栏成为该文件夹的“活镜像”（双击打开仍指向真实文件/快捷方式）。
+    public enum SyncMode { Manual, Watch }
+
     public abstract class ViewModelBase : INotifyPropertyChanged
     {
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -24,6 +36,9 @@ namespace Fangcun
         [JsonIgnore] public ImageSource? IconSource => IconService.GetIcon(Path);
         public string DisplayName { get; set; } = "";
         public int Order { get; set; }
+        private bool _isSelected;
+        [JsonIgnore]
+        public bool IsSelected { get => _isSelected; set { if (_isSelected == value) return; _isSelected = value; OnPropertyChanged(); } }
         public bool IsEllipsis { get; set; }
         [JsonIgnore] public int EllipsisCount { get; set; }
     }
@@ -96,6 +111,17 @@ namespace Fangcun
 
         private OverflowMode _overflow = OverflowMode.Ellipsis;
         public OverflowMode Overflow { get => _overflow; set { _overflow = value; OnPropertyChanged(); } }
+
+        private LayerMode _layer = LayerMode.Bottom;
+        public LayerMode LayerMode { get => _layer; set { if (_layer != value) { _layer = value; OnPropertyChanged(); } } }
+
+        private SyncMode _sync = SyncMode.Manual;
+        public SyncMode SyncMode { get => _sync; set { if (_sync != value) { _sync = value; OnPropertyChanged(); } } }
+
+        // 监视模式：被监视的文件夹路径（地址）
+        public string WatchPath { get; set; } = "";
+        // 监视模式：后缀筛选（如 "txt" / "*.txt;*.png" / 留空=全部），分号或逗号分隔，忽略大小写与前后空白
+        public string WatchFilter { get; set; } = "";
 
         public int Monitor { get; set; } = 0;
 

@@ -1,0 +1,42 @@
+<Window x:Class="Fangcun.MonitorConfigWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="监视设置" Width="440" Height="210" WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize" WindowStyle="ToolWindow" FontFamily="Microsoft YaHei" Background="#F5F5F7">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="48"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="地址" Foreground="#444"/>
+            <TextBox Grid.Column="1" x:Name="TxtPath" VerticalContentAlignment="Center" Margin="6,0,6,0"/>
+            <Button Grid.Column="2" Content="浏览" Width="56" Click="Browse_Click"/>
+        </Grid>
+
+        <Grid Grid.Row="1" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="48"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="后缀" Foreground="#444"/>
+            <TextBox Grid.Column="1" x:Name="TxtFilter" VerticalContentAlignment="Center" Margin="6,0,0,0"/>
+        </Grid>
+
+        <TextBlock Grid.Row="2" Foreground="#888" FontSize="11" TextWrapping="Wrap"
+                   Text="后缀留空表示监视全部文件；多个后缀用分号或逗号分隔，例如：txt;*.png;lnk（lnk 即快捷方式）。"/>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="确定" Width="80" Margin="0,0,8,0" Click="Ok_Click"/>
+            <Button Content="取消" Width="80" Click="Cancel_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

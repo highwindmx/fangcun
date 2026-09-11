@@ -80,6 +80,10 @@ namespace Fangcun
         public static readonly IntPtr HWND_BOTTOM = new IntPtr(1);
         // 置顶 z-order（reparent 后置于桌面图标层之上，呈现“浮于图标”的围栏效果）
         public static readonly IntPtr HWND_TOP = new IntPtr(0);
+        // 真正的总在最前（topmost 带），用于「置顶」层叠模式
+        public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+        // 取消总在最前（退回普通 z 序），与 HWND_TOPMOST 配对使用
+        public static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
@@ -103,6 +107,7 @@ namespace Fangcun
 
         public const int GWLP_EXSTYLE = -20;
         public const uint WS_EX_NOACTIVATE = 0x08000000;
+        public const uint WS_EX_TOPMOST = 0x00000008;
         public const int WS_EX_LAYERED = 0x00080000;
 
         public const int GWL_STYLE = -16;
@@ -182,6 +187,8 @@ namespace Fangcun
         public static extern IntPtr SetCursor(IntPtr hCursor);
         public const int WM_LBUTTONDOWN = 0x0201;
         public const int WM_LBUTTONUP = 0x0202;
+        // 全局低级鼠标钩子：监听全部线程的左键按下，用于“点击围栏外任意处即取消选中”
+        public const int WH_MOUSE_LL = 14;
         public const int WM_MOUSEMOVE = 0x0200;
         public const int WM_NCLBUTTONDOWN = 0x00A1;
         public const int WM_NCLBUTTONUP = 0x00A2;
@@ -336,5 +343,31 @@ namespace Fangcun
             public int X;
             public int Y;
         }
+
+        // 全局低级鼠标钩子回调签名
+        public delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        // WH_MOUSE_LL 回调的 lParam 指向的结构：pt 为屏幕物理像素坐标（与 GetWindowRect 同坐标系）
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MSLLHOOKSTRUCT
+        {
+            public POINT pt;
+            public uint mouseData;
+            public uint flags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern IntPtr SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hMod, uint dwThreadId);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        public static extern IntPtr GetModuleHandle(string? lpModuleName);
     }
 }

@@ -39,6 +39,37 @@
         </Grid.RowDefinitions>
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" x:Name="Scroller">
             <StackPanel>
+                <GroupBox Header="层叠模式">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="64"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource Label}" Text="显示层级"/>
+                        <ComboBox Grid.Column="1" x:Name="LayerCombo" SelectionChanged="LayerCombo_SelectionChanged">
+                            <ComboBoxItem Content="置底" Tag="Bottom"/>
+                            <ComboBoxItem Content="置顶" Tag="Top"/>
+                            <ComboBoxItem Content="窗口" Tag="Window"/>
+                        </ComboBox>
+                    </Grid>
+                </GroupBox>
+
+                <GroupBox Header="同步模式">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="64"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Style="{StaticResource Label}" Text="内容来源"/>
+                        <ComboBox Grid.Column="1" x:Name="SyncCombo" SelectionChanged="SyncCombo_SelectionChanged">
+                            <ComboBoxItem Content="手动" Tag="Manual"/>
+                            <ComboBoxItem Content="监视" Tag="Watch"/>
+                        </ComboBox>
+                        <Button Grid.Column="2" Content="配置…" Margin="8,0,0,0" Click="SyncConfig_Click"/>
+                    </Grid>
+                </GroupBox>
+
                 <GroupBox Header="背景样式" x:Name="GroupCustom">
                     <Grid>
                         <Grid.ColumnDefinitions>

@@ -62,6 +62,15 @@
                             <MenuItem x:Name="OverflowScroll" Header="滚动" Tag="Scroll" IsCheckable="True" Click="MenuOverflow_Click"/>
                             <MenuItem x:Name="OverflowEllipsis" Header="省略" Tag="Ellipsis" IsCheckable="True" Click="MenuOverflow_Click"/>
                         </MenuItem>
+                        <MenuItem Header="层叠模式">
+                            <MenuItem x:Name="LayerBottom" Header="置底" Tag="Bottom" IsCheckable="True" Click="MenuLayer_Click"/>
+                            <MenuItem x:Name="LayerTop" Header="置顶" Tag="Top" IsCheckable="True" Click="MenuLayer_Click"/>
+                            <MenuItem x:Name="LayerWindow" Header="窗口" Tag="Window" IsCheckable="True" Click="MenuLayer_Click"/>
+                        </MenuItem>
+                        <MenuItem Header="同步模式">
+                            <MenuItem x:Name="SyncManual" Header="手动" Tag="Manual" IsCheckable="True" Click="MenuSync_Click"/>
+                            <MenuItem x:Name="SyncWatch" Header="监视" Tag="Watch" IsCheckable="True" Click="MenuSync_Click"/>
+                        </MenuItem>
                         <MenuItem Header="删除围栏" Click="MenuDelete_Click"/>
                         <Separator/>
                         <MenuItem Header="新建围栏" Click="MenuNewFence_Click"/>
@@ -74,6 +83,7 @@
                           HorizontalScrollBarVisibility="Disabled"
                           Background="Transparent" AllowDrop="True"
                           PreviewMouseLeftButtonDown="ItemsHost_PreviewMouseLeftButtonDown"
+                          MouseLeftButtonDown="Scroller_MouseLeftButtonDown"
                           Drop="ItemsHost_Drop" DragEnter="ItemsHost_DragEnter"
                           DragOver="ItemsHost_DragOver" DragLeave="ItemsHost_DragLeave">
                 <ItemsControl x:Name="ItemsHost" AllowDrop="True" Background="Transparent">
@@ -102,17 +112,21 @@
                     </ItemsControl.ItemContainerStyle>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border x:Name="ItemBorder" Padding="4" AllowDrop="True" Background="Transparent"
-                                    PreviewMouseLeftButtonDown="Item_PreviewMouseLeftButtonDown"
-                                    PreviewMouseMove="Item_PreviewMouseMove"
-                                    PreviewMouseLeftButtonUp="Item_PreviewMouseLeftButtonUp"
-                                    Drop="Item_Drop" DragEnter="Item_DragEnter"
-                                    DragOver="Item_DragOver" DragLeave="Item_DragLeave">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="Width" Value="76"/>
-                                        <Setter Property="HorizontalAlignment" Value="Left"/>
-                                        <Style.Triggers>
+                        <Border x:Name="ItemBorder" Padding="4" AllowDrop="True"
+                                PreviewMouseLeftButtonDown="Item_PreviewMouseLeftButtonDown"
+                                PreviewMouseMove="Item_PreviewMouseMove"
+                                PreviewMouseLeftButtonUp="Item_PreviewMouseLeftButtonUp"
+                                Drop="Item_Drop" DragEnter="Item_DragEnter"
+                                DragOver="Item_DragOver" DragLeave="Item_DragLeave">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Width" Value="76"/>
+                                    <Setter Property="HorizontalAlignment" Value="Left"/>
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                            <Setter Property="Background" Value="#665A8ADE"/>
+                                        </DataTrigger>
                                             <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=local:FenceWindow}, Path=DataContext.Style.ItemLayout}" Value="List">
                                                 <Setter Property="Width" Value="Auto"/>
                                                 <Setter Property="HorizontalAlignment" Value="Stretch"/>

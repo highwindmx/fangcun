@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -27,8 +28,15 @@ namespace Fangcun
         private readonly Fence _fence;
         private FenceItem? _dragItem;
         private Point _dragStart;
+        private int _anchorIndex = -1;   // Shift 多选的锚点
+        private bool _suppressClear;      // 点击发生在条目上时抑制“点空白处清空选区”
         private bool _expanded;          // 角标向下撑大（展开全部）态：点击后保持显示全部；用户手动缩回则自动退回截断态
         private double _normalHeight;
+        // 全局鼠标钩子（WH_MOUSE_LL）：点击围栏外任意处即取消选中。delegate 需保留引用防 GC。
+        private NativeMethods.HookProc? _mouseProc;
+        private IntPtr _mouseHook = IntPtr.Zero;
+        // 监视模式：文件夹监视器（FileSystemWatcher）。仅 SyncMode==Watch 时启用。
+        private FileSystemWatcher? _watcher;
 
         // 心跳：reparent 态下检测桌面父窗口（Explorer 重启）失效则重挂
         private readonly DispatcherTimer _heartbeat = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -95,8 +103,9 @@ namespace Fangcun
             {
                 _titleBarHeight = Math.Max(26, TitleBar.ActualHeight);
                 ApplyClip();
-                // 启动还原的围栏：reparent(设 owner=桌面)后沉到桌面层，避免刚启动就盖住用户正在用的窗口
-                if (_sendBackOnLoad) SendToBack();
+                // 启动还原的围栏：reparent(设 owner=桌面)后沉到桌面层，避免刚启动就盖住用户正在用的窗口；
+                // 置底模式亦在加载完成后再沉底一次（与 ApplyLayerMode 的初始化呼应，确保不盖住应用窗口）。
+                if (_sendBackOnLoad || _fence.LayerMode == LayerMode.Bottom) SendToBack();
             };
             SizeChanged += (_, _) =>
             {
@@ -151,8 +160,247 @@ namespace Fangcun
             base.OnSourceInitialized(e);
             _hwnd = new WindowInteropHelper(this).Handle;
             HwndSource.FromHwnd(_hwnd).AddHook(HwndHook);
-            ReparentToDesktop();
-            SetNoActivate(true); // 默认不激活：点击不抢前台焦点，避免所有围栏浮起盖住当前窗口
+            ApplyLayerMode();            // 按 LayerMode 应用 owner / Topmost / 不激活 / z 序（内部按需 reparent 到桌面）
+            ApplySyncMode();             // 按 SyncMode 启动/关闭文件夹监视（重启恢复时若配置为监视则自动接管）
+            InstallGlobalMouseHook();    // 点击围栏外任意处取消选中
+            Closed += (_, _) => { UninstallGlobalMouseHook(); DisposeWatcher(); };
+        }
+
+        // ---------- 层叠模式（置底 / 置顶 / 窗口）----------
+        // 关键约束：Windows 里「owner=桌面（Win+D 免疫）」与「浮到所有普通窗口之上」互斥——
+        //   被拥有的窗口必须始终待在 owner 之上，而桌面 owner(SHELLDLL_DefView) 位于 z 序最底层，
+        //   所以挂了桌面 owner 的窗口永远浮不到普通窗口上面（即使加了 WS_EX_TOPMOST 也被钉在桌面层之上、普通窗口之下）。
+        // 因此三种模式各自成立、不互相叠加：
+        //   置底：owner=桌面（Win+D 不隐藏）+ 不激活 + 沉到桌面层之上、普通窗口之下（默认，等同原行为）。
+        //   置顶：解除桌面 owner，用 SetWindowPos(HWND_TOPMOST) 成为真正的「总在最前」窗口（始终在普通窗口之上）；
+        //         不抢焦点（WS_EX_NOACTIVATE）；代价是 Win+D 会像普通置顶窗一样被隐藏（Windows 置顶窗的标准行为，无法与桌面 owner 共存）。
+        //   窗口：解除桌面 owner、去掉置顶、去掉不激活 → 独立顶层窗口，随普通窗口 z 序、可聚焦、Win+D 会最小化、可 Alt+Tab。
+        // 切换模式时直接调用本方法即可即时生效（属性已先写回 _fence 并由 Save 持久化）。
+        internal void ApplyLayerMode()
+        {
+            if (_hwnd == IntPtr.Zero) return;
+            try
+            {
+                LayerMode mode = _fence.LayerMode;
+
+                // 桌面 owner：仅置底需要（Win+D 免疫）；置顶/窗口都解除（挂了桌面 owner 会钉死在底层带，无法浮到普通窗口上）
+                if (mode == LayerMode.Bottom)
+                {
+                    if (!_reparented) ReparentToDesktop();
+                }
+                else if (_reparented)
+                {
+                    NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWL_HWNDPARENT, IntPtr.Zero);
+                    _reparented = false;
+                    _desktopHost = IntPtr.Zero;
+                }
+
+                // 不激活样式：置底/置顶不抢焦点；窗口允许正常激活（点击即聚焦，失焦自然下沉）
+                SetNoActivate(mode != LayerMode.Window);
+
+                // z 序 / topmost 带：必须用 SetWindowPos 的锚点物理地移入/移出 topmost 带。
+                // 仅用 SetWindowLong 改 WS_EX_TOPMOST 位是不可靠的——窗口仍会卡在 topmost 带里，
+                // 导致切回「窗口/置底」后即使清了样式位，失焦也不下沉、仍浮在普通窗口之上。
+                uint swp = NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE;
+                switch (mode)
+                {
+                    case LayerMode.Top:
+                        // 不挂桌面 owner + 进 topmost 带 → 真正总在最前（Win+D 会随之隐藏，标准置顶窗行为）
+                        NativeMethods.SetWindowPos(_hwnd, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0, swp);
+                        break;
+
+                    case LayerMode.Window:
+                        // 退出 topmost 带 → 回归普通 z 序带；再提到普通带最前一次，之后随点击/Alt+Tab 自然变化（失焦即下沉）
+                        NativeMethods.SetWindowPos(_hwnd, NativeMethods.HWND_NOTOPMOST, 0, 0, 0, 0, swp);
+                        NativeMethods.SetWindowPos(_hwnd, NativeMethods.HWND_TOP, 0, 0, 0, 0, swp);
+                        break;
+
+                    case LayerMode.Bottom:
+                    default:
+                        // 退出 topmost 带 → 回归普通 z 序带；再沉底（桌面 owner 之上、普通窗口之下）
+                        NativeMethods.SetWindowPos(_hwnd, NativeMethods.HWND_NOTOPMOST, 0, 0, 0, 0, swp);
+                        SendToBack();
+                        break;
+                }
+                Log($"ApplyLayerMode: {mode} reparented={_reparented}");
+            }
+            catch (Exception ex)
+            {
+                Log($"ApplyLayerMode 异常: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        // ---------- 同步模式（手动 / 监视）----------
+        // 监视模式：用 FileSystemWatcher 监视 WatchPath 文件夹，按 WatchFilter 后缀筛选，
+        // 把文件夹内的文件实时同步进围栏（新增→加入、删除→移除、重命名→更新路径/名称）。
+        // 围栏成为该文件夹的“活镜像”；双击打开仍指向真实文件/快捷方式。
+        internal void ApplySyncMode()
+        {
+            if (_closed) return;
+            DisposeWatcher();
+            if (_fence.SyncMode != SyncMode.Watch) return;       // 手动模式：不监视
+            if (string.IsNullOrWhiteSpace(_fence.WatchPath) || !Directory.Exists(_fence.WatchPath))
+            {
+                Log($"ApplySyncMode: 监视路径无效或不存在: '{_fence.WatchPath}'");
+                return;
+            }
+            try
+            {
+                var w = new FileSystemWatcher(_fence.WatchPath)
+                {
+                    Filter = "*.*",                 // 多后缀统一用 *.*，再按扩展名手动筛选
+                    IncludeSubdirectories = false,
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName,
+                };
+                w.Created += (_, e) => OnWatchCreated(e.FullPath);
+                w.Deleted += (_, e) => OnWatchDeleted(e.FullPath);
+                w.Renamed += (_, e) => OnWatchRenamed(e.OldFullPath, e.FullPath);
+                w.Error += Watcher_Error;
+                w.EnableRaisingEvents = true;
+                _watcher = w;
+                // 进入/重启监视：以文件夹当前内容为准全量重建（清掉旧条目，载入全部匹配项）
+                ResyncFromFolder();
+                Log($"ApplySyncMode: 监视已启动 -> {_fence.WatchPath} (filter='{_fence.WatchFilter}')");
+            }
+            catch (Exception ex)
+            {
+                Log($"ApplySyncMode 异常: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        private void DisposeWatcher()
+        {
+            try { _watcher?.Dispose(); } catch { }
+            _watcher = null;
+        }
+
+        // 解析 WatchFilter 为小写扩展名集合（含前导点，如 ".txt"）。空集合=不过滤（全部）。
+        private HashSet<string> ParseFilters()
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(_fence.WatchFilter)) return set;
+            foreach (var raw in _fence.WatchFilter.Split(new[] { ';', ',', ' ' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var s = raw.Trim().ToLowerInvariant();
+                if (s.Length == 0) continue;
+                if (s == "*" || s == "*.*") continue;            // 通配=全部
+                if (s.StartsWith(".")) s = s.TrimStart('*');     // "*.txt" -> ".txt"
+                else s = "." + s.TrimStart('*').TrimStart('.');  // "txt" -> ".txt"
+                set.Add(s);
+            }
+            return set;
+        }
+
+        private bool MatchesFilter(string path)
+        {
+            var filters = ParseFilters();
+            if (filters.Count == 0) return true;                // 不过滤：全部文件
+            return filters.Contains(Path.GetExtension(path));
+        }
+
+        // 以文件夹当前内容为准全量重建围栏条目（进入/重启监视时调用）
+        private void ResyncFromFolder()
+        {
+            if (!Directory.Exists(_fence.WatchPath)) return;
+            try
+            {
+                var filters = ParseFilters();
+                var files = Directory.EnumerateFileSystemEntries(_fence.WatchPath)
+                    .Where(p => filters.Count == 0 || filters.Contains(Path.GetExtension(p)))
+                    .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                Dispatcher.Invoke(() =>
+                {
+                    _fence.Items.Clear();
+                    foreach (var p in files)
+                        _fence.Items.Add(new FenceItem { Path = p, DisplayName = Path.GetFileName(p) ?? p });
+                    Reindex(); Save(); ScheduleBadgeUpdate();
+                });
+            }
+            catch (Exception ex)
+            {
+                Log($"ResyncFromFolder 异常: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        private void OnWatchCreated(string path)
+        {
+            if (!MatchesFilter(path)) return;
+            Dispatcher.Invoke(() =>
+            {
+                if (_fence.Items.Any(x => x.Path.Equals(path, StringComparison.OrdinalIgnoreCase))) return;
+                _fence.Items.Add(new FenceItem { Path = path, DisplayName = Path.GetFileName(path) ?? path });
+                Reindex(); Save(); ScheduleBadgeUpdate();
+            });
+        }
+
+        private void OnWatchDeleted(string path)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                var it = _fence.Items.FirstOrDefault(x => x.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+                if (it != null) { _fence.Items.Remove(it); Reindex(); Save(); ScheduleBadgeUpdate(); }
+            });
+        }
+
+        private void OnWatchRenamed(string oldPath, string newPath)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                var it = _fence.Items.FirstOrDefault(x => x.Path.Equals(oldPath, StringComparison.OrdinalIgnoreCase));
+                if (it != null)
+                {
+                    it.Path = newPath;
+                    it.DisplayName = Path.GetFileName(newPath) ?? newPath;
+                    Save(); ScheduleBadgeUpdate();
+                }
+                else if (MatchesFilter(newPath))   // 重命名后也匹配筛选：当作新增处理
+                {
+                    _fence.Items.Add(new FenceItem { Path = newPath, DisplayName = Path.GetFileName(newPath) ?? newPath });
+                    Reindex(); Save(); ScheduleBadgeUpdate();
+                }
+            });
+        }
+
+        private void Watcher_Error(object sender, ErrorEventArgs e)
+        {
+            // 内部缓冲区溢出等错误：重建监视器（常见原因：短时间内大量文件变动）
+            Log($"Watcher_Error: {e.GetException().Message}，尝试重建监视");
+            ApplySyncMode();
+        }
+
+        // ---------- 点击围栏外取消选中（全局低级鼠标钩子）----------
+        // 围栏是 WS_EX_NOACTIVATE（点击不抢焦点），所以点击外部不会触发 Deactivated，只能靠全局钩子。
+        // 钩子收到 WM_LBUTTONDOWN 时取屏幕物理像素坐标，与 GetWindowRect 比较：落在围栏矩形外即清空选区。
+        private void InstallGlobalMouseHook()
+        {
+            _mouseProc = MouseHookProc;
+            _mouseHook = NativeMethods.SetWindowsHookEx(
+                NativeMethods.WH_MOUSE_LL, _mouseProc,
+                NativeMethods.GetModuleHandle(null), 0);
+        }
+
+        private void UninstallGlobalMouseHook()
+        {
+            if (_mouseHook != IntPtr.Zero)
+            {
+                NativeMethods.UnhookWindowsHookEx(_mouseHook);
+                _mouseHook = IntPtr.Zero;
+                _mouseProc = null;
+            }
+        }
+
+        private IntPtr MouseHookProc(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0 && wParam.ToInt32() == NativeMethods.WM_LBUTTONDOWN && _mouseHook != IntPtr.Zero)
+            {
+                var hs = Marshal.PtrToStructure<NativeMethods.MSLLHOOKSTRUCT>(lParam);
+                NativeMethods.GetWindowRect(_hwnd, out NativeMethods.RECT r);
+                bool inside = hs.pt.X >= r.Left && hs.pt.X <= r.Right && hs.pt.Y >= r.Top && hs.pt.Y <= r.Bottom;
+                if (!inside && _fence.Items.Any(x => x.IsSelected))
+                    Dispatcher.BeginInvoke((Action)ClearSelection);
+            }
+            return NativeMethods.CallNextHookEx(_mouseHook, nCode, wParam, lParam);
         }
 
         // ---------- 桌面常驻：把窗口 owner 设为桌面 SHELLDLL_DefView（Win+D 不隐藏） ----------
@@ -192,12 +440,14 @@ namespace Fangcun
 
         // 不激活样式（WS_EX_NOACTIVATE）：点击围栏不抢前台焦点，Z 序原地不动，绝不盖住正在用的应用窗口。
         // 重命名编辑态需临时移除该样式并 Activate，使 TextBox 能获取键盘焦点；提交后恢复。
+        // 窗口模式不参与不激活（点击应可正常聚焦，像普通窗口），即便 enable=true 也不强制设置。
         private void SetNoActivate(bool enable)
         {
             try
             {
                 int ex = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWLP_EXSTYLE);
-                if (enable) ex |= (int)NativeMethods.WS_EX_NOACTIVATE;
+                bool want = enable && _fence.LayerMode != LayerMode.Window;
+                if (want) ex |= (int)NativeMethods.WS_EX_NOACTIVATE;
                 else ex &= ~(int)NativeMethods.WS_EX_NOACTIVATE;
                 NativeMethods.SetWindowLongPtr(_hwnd, NativeMethods.GWLP_EXSTYLE, new IntPtr(ex));
             }
@@ -360,8 +610,9 @@ namespace Fangcun
             if (msg == NativeMethods.WM_MOUSEACTIVATE)
             {
                 // 重命名编辑态：允许窗口正常激活（焦点已在 TextBox，且样式已临时移除）；
-                // 其他情况：返回 MA_NOACTIVATE，点击不抢前台焦点，围栏保持 Z 序原位、不盖当前窗口。
-                if (TitleEdit.Visibility == Visibility.Visible)
+                // 窗口模式：点击正常激活（像普通窗口）；
+                // 其余（置底/置顶）：返回 MA_NOACTIVATE，点击不抢前台焦点，围栏保持 Z 序原位、不盖当前窗口。
+                if (TitleEdit.Visibility == Visibility.Visible || _fence.LayerMode == LayerMode.Window)
                     return IntPtr.Zero;
                 handled = true;
                 return new IntPtr(NativeMethods.MA_NOACTIVATE);
@@ -569,18 +820,61 @@ namespace Fangcun
             ScheduleBadgeUpdate();
         }
 
+        // 多条整体重排：先全部移除(索引随之收缩)，再整体插到目标前
+        private void MoveItems(List<FenceItem> dragged, FenceItem? target)
+        {
+            if (dragged == null || dragged.Count == 0) return;
+            if (target != null && dragged.Contains(target)) return;
+            int insertAt = target == null ? _fence.Items.Count : _fence.Items.IndexOf(target);
+            if (insertAt < 0) insertAt = _fence.Items.Count;
+            foreach (var d in dragged) _fence.Items.Remove(d);
+            if (insertAt > _fence.Items.Count) insertAt = _fence.Items.Count;
+            foreach (var d in dragged) _fence.Items.Insert(insertAt++, d);
+            Reindex();
+            Save();
+            ScheduleBadgeUpdate();
+        }
+
         private void Reindex() => _fence.Items.Select((it, i) => { it.Order = i; return it; }).ToList();
 
-        // ---------- 拖拽 ----------
+        // ---------- 拖拽 / 多选 ----------
+        private void ClearSelection()
+        {
+            foreach (var it in _fence.Items) it.IsSelected = false;
+            _anchorIndex = -1;
+        }
+
+        private List<FenceItem> SelectedItems() => _fence.Items.Where(x => x.IsSelected).ToList();
+
         private void Item_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (e.ChangedButton != MouseButton.Left) return;
-            if (((FrameworkElement)sender).DataContext is FenceItem item)
+            if (((FrameworkElement)sender).DataContext is not FenceItem item) return;
+            _suppressClear = true;   // 点在条目上：不要被 Scroller 的空白点击清空（双击打开也需保留选区）
+            if (e.ClickCount == 2) { OpenItem(item); return; }
+            _dragItem = item;
+            _dragStart = e.GetPosition(this);
+            // 注意：用物理按键状态而非 Keyboard.Modifiers —— 后者在 Preview 事件中常返回 None（已知 WPF 坑），
+            // 会导致 Ctrl/Shift 判定失效、每次都走单选分支、多选永远不生效。
+            bool ctrl = Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
+            bool shift = Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
+            int idx = _fence.Items.IndexOf(item);
+            if (ctrl)
             {
-                if (e.ClickCount == 2) { OpenItem(item); return; }
-                _dragItem = item;
-                _dragStart = e.GetPosition(this);
-                ((FrameworkElement)sender).CaptureMouse();
+                // Ctrl+点击：切换该条目选中态
+                item.IsSelected = !item.IsSelected;
+                if (item.IsSelected) _anchorIndex = idx;
+            }
+            else if (shift && _anchorIndex >= 0)
+            {
+                // Shift+点击：从锚点区间全选
+                int a = Math.Min(_anchorIndex, idx), b = Math.Max(_anchorIndex, idx);
+                for (int i = a; i <= b; i++) _fence.Items[i].IsSelected = true;
+            }
+            else
+            {
+                // 普通点击：未选中则单选；已选中(含多选组中)则保留选区以便整体拖拽
+                if (!item.IsSelected) { ClearSelection(); item.IsSelected = true; _anchorIndex = idx; }
             }
         }
 
@@ -590,8 +884,15 @@ namespace Fangcun
             if ((e.GetPosition(this) - _dragStart).Length < 4) return;
             var item = _dragItem;
             _dragItem = null;
-            ((FrameworkElement)sender).ReleaseMouseCapture();
-            DragDrop.DoDragDrop(this, new DataObject("fenceItem", item), DragDropEffects.Move);
+            // 拖出集合：多选时拖出全部选中项，否则仅当前项
+            var sel = SelectedItems();
+            var set = (sel.Count > 1 && sel.Contains(item)) ? sel : new List<FenceItem> { item };
+            // 同时携带真实文件路径(FileDrop)与内部重排格式；仅允许 Copy：拖出只生成副本，绝不移动原文件。
+            var data = new DataObject();
+            if (set.Count == 1) data.SetData("fenceItem", set[0]);          // 单条：内部重排
+            else data.SetData("fenceItems", set);                           // 多条：内部整体重排
+            data.SetData(DataFormats.FileDrop, set.Select(x => x.Path).ToArray());
+            DragDrop.DoDragDrop(this, data, DragDropEffects.Copy);
         }
 
         private void Item_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -627,9 +928,11 @@ namespace Fangcun
         private void HandleDrop(object sender, DragEventArgs e)
         {
             var target = ((FrameworkElement)sender).DataContext as FenceItem;
-            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            // 判定顺序：多条重排(fenceItems) > 单条重排(fenceItem) > 外部新增(FileDrop)。
+            // 内部拖拽同时携带重排格式与 FileDrop：必须优先按重排处理，否则误判为新增而重复。
+            if (e.Data.GetDataPresent("fenceItems"))
             {
-                AddPaths((string[])e.Data.GetData(DataFormats.FileDrop)!);
+                MoveItems((List<FenceItem>)e.Data.GetData("fenceItems")!, target);
                 e.Handled = true;
             }
             else if (e.Data.GetDataPresent("fenceItem"))
@@ -637,9 +940,21 @@ namespace Fangcun
                 MoveItem((FenceItem)e.Data.GetData("fenceItem")!, target);
                 e.Handled = true;
             }
+            else if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                AddPaths((string[])e.Data.GetData(DataFormats.FileDrop)!);
+                e.Handled = true;
+            }
         }
 
-        private void ItemsHost_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) { }
+        private void ItemsHost_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+            => _suppressClear = false;   // 隧道先复位；若点击落在条目上，条目 handler 会置 true
+
+        // 空白处（Scroller 任意非条目区域）点击：清空选区
+        private void Scroller_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (!_suppressClear) ClearSelection();
+        }
 
         private void OpenItem(FenceItem item)
         {
@@ -808,6 +1123,11 @@ namespace Fangcun
             if (((MenuItem)sender).Tag is string tag && Enum.TryParse<OverflowMode>(tag, out var m))
             { _fence.Overflow = m; Save(); }
         }
+        private void MenuLayer_Click(object sender, RoutedEventArgs e)
+        {
+            if (((MenuItem)sender).Tag is string tag && Enum.TryParse<LayerMode>(tag, out var m))
+            { _fence.LayerMode = m; ApplyLayerMode(); Save(); }
+        }
         private void MenuDelete_Click(object sender, RoutedEventArgs e)
         {
             App.Config.Fences.Remove(_fence);
@@ -815,6 +1135,37 @@ namespace Fangcun
             Close();
         }
         private void MenuNewFence_Click(object sender, RoutedEventArgs e) => App.NewFence();
+
+        // ---------- 同步模式（手动 / 监视）----------
+        private void MenuSync_Click(object sender, RoutedEventArgs e)
+        {
+            if (((MenuItem)sender).Tag is not string tag || !Enum.TryParse<SyncMode>(tag, out var m))
+            { SyncSyncChecks(); return; }
+            if (m == SyncMode.Manual)
+            {
+                _fence.SyncMode = SyncMode.Manual;
+                ApplySyncMode();   // 关闭监视，保留现有条目转为手动管理
+                Save();
+            }
+            else
+            {
+                // 打开配置窗输入地址+后缀；确认后由窗体回写并启动监视。取消则保持原模式不变。
+                var dlg = new MonitorConfigWindow(_fence) { Owner = this };
+                if (dlg.ShowDialog() == true)
+                {
+                    _fence.SyncMode = SyncMode.Watch;
+                    ApplySyncMode();
+                    Save();
+                }
+            }
+            SyncSyncChecks();
+        }
+
+        private void SyncSyncChecks()
+        {
+            SyncManual.IsChecked = _fence.SyncMode == SyncMode.Manual;
+            SyncWatch.IsChecked = _fence.SyncMode == SyncMode.Watch;
+        }
 
         // ---------- 重命名退出编辑模式：点击围栏内非编辑控件即提交 ----------
         private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
@@ -834,6 +1185,11 @@ namespace Fangcun
             LayoutList.IsChecked = _fence.Style.ItemLayout == "List";
             OverflowScroll.IsChecked = _fence.Overflow == OverflowMode.Scroll;
             OverflowEllipsis.IsChecked = _fence.Overflow == OverflowMode.Ellipsis;
+            LayerBottom.IsChecked = _fence.LayerMode == LayerMode.Bottom;
+            LayerTop.IsChecked = _fence.LayerMode == LayerMode.Top;
+            LayerWindow.IsChecked = _fence.LayerMode == LayerMode.Window;
+            SyncManual.IsChecked = _fence.SyncMode == SyncMode.Manual;
+            SyncWatch.IsChecked = _fence.SyncMode == SyncMode.Watch;
             UpdatePresetChecks();
         }
 
