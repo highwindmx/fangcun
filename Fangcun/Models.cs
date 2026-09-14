@@ -125,6 +125,12 @@ namespace Fangcun
 
         public int Monitor { get; set; } = 0;
 
+        // 跨显示器记忆：所属显示器稳定标识(DeviceName, 如 \\.\DISPLAY2) + 相对该显示器工作区左上角的偏移。
+        // 与绝对坐标 X/Y 解耦——副屏拔掉时不覆盖记忆，插回时据此还原；旧 config 无此字段则留空，等同无记忆。
+        public string? ScreenId { get; set; }
+        public double RelX { get; set; }
+        public double RelY { get; set; }
+
         private FenceStyle _style = new();
         public FenceStyle Style { get => _style; set { _style = value; OnPropertyChanged(); } }
 

@@ -13,6 +13,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Data;
 using System.Windows.Threading;
+
 using Microsoft.Win32;
 
 namespace Fangcun
@@ -124,6 +125,7 @@ namespace Fangcun
                 // owner 模式下窗口仍是顶层，Left/Top 恒为屏幕坐标，写回无污染风险
                 _fence.X = Left;
                 _fence.Y = Top;
+                UpdateScreenMemory();   // 仅当记住的显示器在场才更新记忆，副屏拔掉时不覆盖
                 Save();
                 // 自适应开启时，移动围栏后延迟重算，使背景随所在桌面区域变化（缺陷2）
                 if (_fence.Style.UseWallpaperTint) { _tintDebounce.Stop(); _tintDebounce.Start(); }
@@ -163,7 +165,58 @@ namespace Fangcun
             ApplyLayerMode();            // 按 LayerMode 应用 owner / Topmost / 不激活 / z 序（内部按需 reparent 到桌面）
             ApplySyncMode();             // 按 SyncMode 启动/关闭文件夹监视（重启恢复时若配置为监视则自动接管）
             InstallGlobalMouseHook();    // 点击围栏外任意处取消选中
-            Closed += (_, _) => { UninstallGlobalMouseHook(); DisposeWatcher(); };
+            // 多显示器插拔：副屏插回时自动把本围栏还原到其记忆的相对位置（无需重启）
+            Microsoft.Win32.SystemEvents.DisplaySettingsChanged += SystemEvents_DisplaySettingsChanged;
+            Closed += (_, _) =>
+            {
+                UninstallGlobalMouseHook();
+                DisposeWatcher();
+                Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= SystemEvents_DisplaySettingsChanged;
+            };
+        }
+
+        // ---------- 跨显示器记忆（副屏拔插后还原位置）----------
+        // 更新记忆：仅当「记住的显示器当前仍在场」时才写 ScreenId/RelX/RelY。
+        // 副屏拔掉后窗口被系统挪到主屏，此时不覆盖记忆，确保插回时还原。
+        private void UpdateScreenMemory()
+        {
+            try
+            {
+                var cur = System.Windows.Forms.Screen.FromHandle(_hwnd);
+                bool rememberedPresent = !string.IsNullOrEmpty(_fence.ScreenId)
+                    && System.Windows.Forms.Screen.AllScreens.Any(s => s.DeviceName == _fence.ScreenId);
+                if (!rememberedPresent && !string.IsNullOrEmpty(_fence.ScreenId))
+                    return; // 记住的显示器不在（被拔掉）→ 当前在主屏是系统兜底，保留原记忆
+                var wa = cur.WorkingArea;
+                _fence.ScreenId = cur.DeviceName;
+                _fence.RelX = Left - wa.Left;
+                _fence.RelY = Top - wa.Top;
+            }
+            catch { }
+        }
+
+        // 显示器配置变化（拔/插副屏）：记住的显示器重新出现则还原到其相对位置；仍不在则不动（已在主屏兜底）。
+        private void SystemEvents_DisplaySettingsChanged(object? sender, EventArgs e)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(_fence.ScreenId)) return;
+                var scr = System.Windows.Forms.Screen.AllScreens.FirstOrDefault(s => s.DeviceName == _fence.ScreenId);
+                if (scr == null) return; // 记住的显示器仍不在 → 保持主屏兜底位置，不移动
+                var wa = scr.WorkingArea;
+                Left = wa.Left + _fence.RelX;
+                Top = wa.Top + _fence.RelY;
+                if (Left < wa.Left) Left = wa.Left + 8;
+                if (Top < wa.Top) Top = wa.Top + 8;
+                if (Left + Width > wa.Right) Left = wa.Right - Width - 8;
+                if (Top + Height > wa.Bottom) Top = wa.Bottom - Height - 8;
+                _fence.X = Left;
+                _fence.Y = Top;
+                Save();
+                // 自适应开启时，跨屏移动后重算背景
+                if (_fence.Style.UseWallpaperTint) { _tintDebounce.Stop(); _tintDebounce.Start(); }
+            }
+            catch { }
         }
 
         // ---------- 层叠模式（置底 / 置顶 / 窗口）----------

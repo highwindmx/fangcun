@@ -235,14 +235,28 @@ namespace Fangcun
         public static void Save() => Persistence.Save(Config);
 
         // 防止历史版本把围栏坐标写成离屏/污染值（-2106 / 106x63）跑到屏外看不见。
-        // 多显示器：逐屏比对工作区，副屏围栏保持在其所在屏幕（不再被误判离屏拽回主屏）；
-        // 仅当完全不在任何屏幕工作区内才归位主屏。
+        // 多显示器：优先按「跨显示器记忆(ScreenId+RelX/RelY)」还原到原属显示器；
+        // 记忆显示器不在（如副屏已拔掉）时沿用现有绝对坐标逻辑兜底主屏，且不覆盖记忆（插回时仍可还原）。
         private static void EnsureOnScreen(Fence fence, int index)
         {
             var screens = Screen.AllScreens;
-            // 1) 围栏左上角所在屏幕
+
+            // 1) 记忆的显示器当前仍连接 → 还原到该显示器上的相对位置
+            if (!string.IsNullOrEmpty(fence.ScreenId))
+            {
+                var remembered = screens.FirstOrDefault(s => s.DeviceName == fence.ScreenId);
+                if (remembered != null)
+                {
+                    var wa = remembered.WorkingArea;
+                    fence.X = wa.Left + fence.RelX;
+                    fence.Y = wa.Top + fence.RelY;
+                    ClampTo(fence, wa);
+                    return;
+                }
+            }
+
+            // 2) 记忆显示器不在：用绝对坐标找当前所在屏；找不到再兜底主屏（不写 ScreenId，保留原记忆）
             Screen? target = screens.FirstOrDefault(s => s.WorkingArea.Contains((int)fence.X, (int)fence.Y));
-            // 2) 否则取与围栏相交的屏幕（半跨屏）
             if (target == null)
             {
                 var rect = new Rectangle((int)fence.X, (int)fence.Y, (int)fence.Width, (int)fence.Height);
@@ -257,15 +271,23 @@ namespace Fangcun
             }
             else
             {
-                // 夹取回目标屏幕工作区内（处理跨屏残留/半出屏）
+                // 在场上某屏：夹取回该屏内，并顺手把当前屏记为记忆（供下次还原）
                 var wa = target.WorkingArea;
-                if (fence.X < wa.Left) fence.X = wa.Left + 8;
-                if (fence.Y < wa.Top) fence.Y = wa.Top + 8;
-                if (fence.X + fence.Width > wa.Right) fence.X = wa.Right - fence.Width - 8;
-                if (fence.Y + fence.Height > wa.Bottom) fence.Y = wa.Bottom - fence.Height - 8;
+                ClampTo(fence, wa);
+                fence.ScreenId = target.DeviceName;
+                fence.RelX = fence.X - wa.Left;
+                fence.RelY = fence.Y - wa.Top;
             }
             if (fence.Width < 120) fence.Width = 240;
             if (fence.Height < 80) fence.Height = 320;
+        }
+
+        private static void ClampTo(Fence fence, Rectangle wa)
+        {
+            if (fence.X < wa.Left) fence.X = wa.Left + 8;
+            if (fence.Y < wa.Top) fence.Y = wa.Top + 8;
+            if (fence.X + fence.Width > wa.Right) fence.X = wa.Right - fence.Width - 8;
+            if (fence.Y + fence.Height > wa.Bottom) fence.Y = wa.Bottom - fence.Height - 8;
         }
 
         public static void NewFence()
