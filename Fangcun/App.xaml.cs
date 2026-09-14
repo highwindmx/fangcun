@@ -105,6 +105,7 @@ namespace Fangcun
                     var w = new FenceWindow(fence, sendToBackOnLoad: true);
                     w.Show();
                 }
+                Save(); // 把 EnsureOnScreen 可能写入/修正的 ScreenId·RelX/RelY 立即落盘，避免依赖后续拖动才持久化
 
                 SetupTray();
             }

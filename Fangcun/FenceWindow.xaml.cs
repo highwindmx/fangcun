@@ -28,6 +28,7 @@ namespace Fangcun
     {
         private readonly Fence _fence;
         private FenceItem? _dragItem;
+        private int _insertIndex = -1;           // 拖拽时实时算出的插入位置（0..Count），供 Drop 使用
         private Point _dragStart;
         private int _anchorIndex = -1;   // Shift 多选的锚点
         private bool _suppressClear;      // 点击发生在条目上时抑制“点空白处清空选区”
@@ -182,17 +183,32 @@ namespace Fangcun
         {
             try
             {
-                var cur = System.Windows.Forms.Screen.FromHandle(_hwnd);
+                // 用窗口中心的屏幕坐标判定所在显示器，而非 Screen.FromHandle(_hwnd)：
+                // 挂桌面壳(owner=SHELLDLL_DefView)的分层顶层窗经 FromHandle/MonitorFromWindow 常误报主屏，
+                // 会把 ScreenId 错记成主屏并落盘，导致重启后按“主屏”还原。FromPoint 基于真实位置，免疫该失真。
+                var center = new System.Drawing.Point(
+                    (int)(Left + Math.Max(ActualWidth, 1) / 2),
+                    (int)(Top + Math.Max(ActualHeight, 1) / 2));
+                var cur = System.Windows.Forms.Screen.FromPoint(center);
                 bool rememberedPresent = !string.IsNullOrEmpty(_fence.ScreenId)
                     && System.Windows.Forms.Screen.AllScreens.Any(s => s.DeviceName == _fence.ScreenId);
                 if (!rememberedPresent && !string.IsNullOrEmpty(_fence.ScreenId))
+                {
+                    Log($"UpdateScreenMemory: 记住的显示器({_fence.ScreenId})不在场，保留原记忆不覆盖（当前在 {cur.DeviceName}）");
                     return; // 记住的显示器不在（被拔掉）→ 当前在主屏是系统兜底，保留原记忆
+                }
                 var wa = cur.WorkingArea;
+                string oldId = _fence.ScreenId ?? "";
                 _fence.ScreenId = cur.DeviceName;
                 _fence.RelX = Left - wa.Left;
                 _fence.RelY = Top - wa.Top;
+                if (oldId != _fence.ScreenId)
+                    Log($"UpdateScreenMemory: ScreenId {oldId} -> {_fence.ScreenId} (RelX={_fence.RelX:0}, RelY={_fence.RelY:0})");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Log($"UpdateScreenMemory 异常: {ex.GetType().Name}: {ex.Message}");
+            }
         }
 
         // 显示器配置变化（拔/插副屏）：记住的显示器重新出现则还原到其相对位置；仍不在则不动（已在主屏兜底）。
@@ -860,26 +876,34 @@ namespace Fangcun
             ScheduleBadgeUpdate();
         }
 
-        private void MoveItem(FenceItem dragged, FenceItem? target)
+        private void MoveItem(FenceItem dragged, int insertIndex)
         {
-            if (dragged == target || dragged.IsEllipsis) return;
+            if (dragged.IsEllipsis) return;
             int oldIndex = _fence.Items.IndexOf(dragged);
             if (oldIndex < 0) return;
-            int newIndex = target == null ? _fence.Items.Count - 1 : _fence.Items.IndexOf(target);
-            if (newIndex < 0) newIndex = _fence.Items.Count - 1;
-            _fence.Items.Move(oldIndex, newIndex);
+            int n = _fence.Items.Count;
+            // insertIndex 为 0..n（n = 插到末尾之后）。最终落点 p：
+            //   插入点 ≤ 原位置 → p = insertIndex（移除自身不影响其左侧槽位）
+            //   插入点 >  原位置 → p = insertIndex - 1（移除自身后右侧槽位左移一位）
+            int ins = insertIndex;
+            if (ins < 0) ins = 0;
+            if (ins > n) ins = n;                       // 允许“插到末尾之后”
+            int p = ins <= oldIndex ? ins : ins - 1;
+            if (p < 0) p = 0;
+            if (p > n - 1) p = n - 1;
+            if (p != oldIndex) _fence.Items.Move(oldIndex, p);
             Reindex();
             Save();
             ScheduleBadgeUpdate();
         }
 
-        // 多条整体重排：先全部移除(索引随之收缩)，再整体插到目标前
-        private void MoveItems(List<FenceItem> dragged, FenceItem? target)
+        // 多条整体重排：按光标实时算出的 insertIndex 插入（移除被拖项时同步左移，保证所见即所得）
+        private void MoveItems(List<FenceItem> dragged, int insertIndex)
         {
             if (dragged == null || dragged.Count == 0) return;
-            if (target != null && dragged.Contains(target)) return;
-            int insertAt = target == null ? _fence.Items.Count : _fence.Items.IndexOf(target);
-            if (insertAt < 0) insertAt = _fence.Items.Count;
+            int shift = dragged.Count(d => _fence.Items.IndexOf(d) < insertIndex); // 落在插入点之前的被拖项，移除后会使目标左移
+            int insertAt = insertIndex - shift;
+            if (insertAt < 0) insertAt = 0;
             foreach (var d in dragged) _fence.Items.Remove(d);
             if (insertAt > _fence.Items.Count) insertAt = _fence.Items.Count;
             foreach (var d in dragged) _fence.Items.Insert(insertAt++, d);
@@ -946,6 +970,9 @@ namespace Fangcun
             else data.SetData("fenceItems", set);                           // 多条：内部整体重排
             data.SetData(DataFormats.FileDrop, set.Select(x => x.Path).ToArray());
             DragDrop.DoDragDrop(this, data, DragDropEffects.Copy);
+            // 拖拽结束（落定或被 Esc 取消）后兜底清除指示线；Drop 里也会清，这里覆盖取消场景
+            HideInsertionLine();
+            _insertIndex = -1;
         }
 
         private void Item_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -961,11 +988,19 @@ namespace Fangcun
         private void ItemsHost_Drop(object sender, DragEventArgs e) => HandleDrop(sender, e);
 
         private void Item_DragEnter(object sender, DragEventArgs e) => SetDropEffect(e);
-        private void Item_DragOver(object sender, DragEventArgs e) => SetDropEffect(e);
-        private void Item_DragLeave(object sender, DragEventArgs e) { }
+        private void Item_DragOver(object sender, DragEventArgs e)
+        {
+            SetDropEffect(e);
+            UpdateInsertion(e);
+        }
+        private void Item_DragLeave(object sender, DragEventArgs e) => HideInsertionLine();
         private void ItemsHost_DragEnter(object sender, DragEventArgs e) => SetDropEffect(e);
-        private void ItemsHost_DragOver(object sender, DragEventArgs e) => SetDropEffect(e);
-        private void ItemsHost_DragLeave(object sender, DragEventArgs e) { }
+        private void ItemsHost_DragOver(object sender, DragEventArgs e)
+        {
+            SetDropEffect(e);
+            UpdateInsertion(e);
+        }
+        private void ItemsHost_DragLeave(object sender, DragEventArgs e) => HideInsertionLine();
 
         private void SetDropEffect(DragEventArgs e)
         {
@@ -978,19 +1013,29 @@ namespace Fangcun
             e.Handled = true;
         }
 
+        // 拖拽悬停时：按光标位置实时算出插入索引并画出指示线；松手时 HandleDrop 复用该索引
+        private void UpdateInsertion(DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent("fenceItem") && !e.Data.GetDataPresent("fenceItems")) return;
+            var dragged = GetDraggedSet(e);
+            Point cursor = e.GetPosition(ItemsHost);
+            _insertIndex = ComputeInsertionIndex(cursor, dragged);
+            ShowInsertionLine(_insertIndex);
+            e.Handled = true;
+        }
+
         private void HandleDrop(object sender, DragEventArgs e)
         {
-            var target = ((FrameworkElement)sender).DataContext as FenceItem;
             // 判定顺序：多条重排(fenceItems) > 单条重排(fenceItem) > 外部新增(FileDrop)。
             // 内部拖拽同时携带重排格式与 FileDrop：必须优先按重排处理，否则误判为新增而重复。
             if (e.Data.GetDataPresent("fenceItems"))
             {
-                MoveItems((List<FenceItem>)e.Data.GetData("fenceItems")!, target);
+                MoveItems((List<FenceItem>)e.Data.GetData("fenceItems")!, _insertIndex);
                 e.Handled = true;
             }
             else if (e.Data.GetDataPresent("fenceItem"))
             {
-                MoveItem((FenceItem)e.Data.GetData("fenceItem")!, target);
+                MoveItem((FenceItem)e.Data.GetData("fenceItem")!, _insertIndex);
                 e.Handled = true;
             }
             else if (e.Data.GetDataPresent(DataFormats.FileDrop))
@@ -998,7 +1043,100 @@ namespace Fangcun
                 AddPaths((string[])e.Data.GetData(DataFormats.FileDrop)!);
                 e.Handled = true;
             }
+            HideInsertionLine();
+            _insertIndex = -1;
         }
+
+        // 取本次拖拽涉及的全部被拖条目（用于插入计算时跳过它们自身）
+        private HashSet<FenceItem>? GetDraggedSet(DragEventArgs e)
+        {
+            try
+            {
+                if (e.Data.GetDataPresent("fenceItems"))
+                    return new HashSet<FenceItem>((List<FenceItem>)e.Data.GetData("fenceItems")!);
+                if (e.Data.GetDataPresent("fenceItem"))
+                    return new HashSet<FenceItem> { (FenceItem)e.Data.GetData("fenceItem")! };
+            }
+            catch { }
+            return null;
+        }
+
+        // 按光标在条目区内的位置计算插入索引：图标模式看 X 半区(换行网格按阅读序)，列表模式看 Y 半区。
+        // 跳过被拖条目自身，避免"落回自己原位"干扰；落空白处时取最近条目判定前/后。
+        private int ComputeInsertionIndex(Point cursor, HashSet<FenceItem>? dragged)
+        {
+            var items = _fence.Items;
+            bool list = _fence.Style.ItemLayout == "List";
+            var rects = new List<(FenceItem it, Rect r)>();
+            for (int i = 0; i < items.Count; i++)
+            {
+                var it = items[i];
+                if (dragged != null && dragged.Contains(it)) continue;
+                if (ItemsHost.ItemContainerGenerator.ContainerFromIndex(i) is not FrameworkElement cp) continue;
+                var topLeft = cp.TransformToAncestor(ItemsHost).Transform(new Point(0, 0));
+                rects.Add((it, new Rect(topLeft, new Size(cp.ActualWidth, cp.ActualHeight))));
+            }
+            if (rects.Count == 0) return Math.Max(0, items.Count - (dragged?.Count ?? 0));
+
+            // 1) 光标落在某条目矩形内 → 按半区判定插其前/后
+            foreach (var (it, r) in rects)
+            {
+                if (r.Contains(cursor))
+                {
+                    bool before = list ? cursor.Y < r.Top + r.Height / 2 : cursor.X < r.Left + r.Width / 2;
+                    int idx = items.IndexOf(it);
+                    return before ? idx : idx + 1;
+                }
+            }
+            // 2) 空隙处：先判“整体末尾之后”的拖放区域（图标模式最后一行下方空白、列表模式最后一条下方空白）
+            //    → 直接追加到末尾（拖到末尾/最后一行时指示线与落点一致，不再被近端条目的半区误判成中间插入）。
+            double maxBottom = rects.Max(t => t.r.Bottom);
+            if (cursor.Y >= maxBottom) return items.Count;
+            // 3) 其余空隙：取中心最近条目，按半区判定前/后
+            var nearest = rects.OrderBy(t => (t.r.X + t.r.Width / 2 - cursor.X) * (t.r.X + t.r.Width / 2 - cursor.X)
+                                            + (t.r.Y + t.r.Height / 2 - cursor.Y) * (t.r.Y + t.r.Height / 2 - cursor.Y)).First();
+            bool beforeN = list ? cursor.Y < nearest.r.Top + nearest.r.Height / 2 : cursor.X < nearest.r.Left + nearest.r.Width / 2;
+            int nIdx = items.IndexOf(nearest.it);
+            return beforeN ? nIdx : nIdx + 1;
+        }
+
+        private Rect? GetItemRect(int index)
+        {
+            if (index < 0 || index >= _fence.Items.Count) return null;
+            if (ItemsHost.ItemContainerGenerator.ContainerFromIndex(index) is not FrameworkElement cp) return null;
+            var topLeft = cp.TransformToAncestor(ItemsHost).Transform(new Point(0, 0));
+            return new Rect(topLeft, new Size(cp.ActualWidth, cp.ActualHeight));
+        }
+
+        // 在插入边界画一条高亮线：列表模式=水平线(跨条目宽度)，图标模式=竖直线(贴目标格左/右)
+        private void ShowInsertionLine(int index)
+        {
+            bool list = _fence.Style.ItemLayout == "List";
+            Rect? before = GetItemRect(index - 1);   // 插入点之前的条目
+            Rect? at = GetItemRect(index);           // 插入点之后的条目
+            double x, y, w, h;
+            if (list)
+            {
+                var r = before ?? at;
+                if (r == null) { HideInsertionLine(); return; }
+                x = 2; y = (before != null ? r.Value.Bottom : r.Value.Top) - 1;
+                w = Math.Max(ItemsHost.ActualWidth - 4, 40); h = 3;
+            }
+            else
+            {
+                var r = before ?? at;
+                if (r == null) { HideInsertionLine(); return; }
+                x = (before != null ? r.Value.Right : r.Value.Left) - 1; y = r.Value.Top;
+                w = 3; h = r.Value.Height;
+            }
+            InsertionLine.Width = w;
+            InsertionLine.Height = h;
+            Canvas.SetLeft(InsertionLine, x);
+            Canvas.SetTop(InsertionLine, y);
+            InsertionLine.Visibility = Visibility.Visible;
+        }
+
+        private void HideInsertionLine() => InsertionLine.Visibility = Visibility.Collapsed;
 
         private void ItemsHost_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
             => _suppressClear = false;   // 隧道先复位；若点击落在条目上，条目 handler 会置 true
