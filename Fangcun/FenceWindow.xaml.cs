@@ -1149,7 +1149,21 @@ namespace Fangcun
 
         private void OpenItem(FenceItem item)
         {
-            try { Process.Start(new ProcessStartInfo(item.Path) { UseShellExecute = true }); } catch { }
+            try
+            {
+                if (string.IsNullOrEmpty(item.Path) || (!File.Exists(item.Path) && !Directory.Exists(item.Path)))
+                {
+                    System.Windows.MessageBox.Show("找不到文件，原文件可能已被移动或重命名。",
+                        "方寸", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                Process.Start(new ProcessStartInfo(item.Path) { UseShellExecute = true });
+            }
+            catch (Exception)
+            {
+                System.Windows.MessageBox.Show("无法打开该文件。",
+                    "方寸", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         // ---------- 条目右键菜单 ----------
@@ -1177,8 +1191,11 @@ namespace Fangcun
                 else
                 {
                     var dir = Path.GetDirectoryName(p);
-                    if (!string.IsNullOrEmpty(dir))
+                    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
                         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{dir}\"") { UseShellExecute = true });
+                    else
+                        System.Windows.MessageBox.Show("找不到该文件的位置，原文件可能已被移动或重命名。",
+                            "方寸", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
             catch { }
