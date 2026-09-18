@@ -1266,7 +1266,12 @@ namespace Fangcun
             UpdatePresetChecks();
         }
         private void MenuConfig_Click(object sender, RoutedEventArgs e)
-            => new FenceSettingsWindow(_fence, this, "custom").ShowDialog();
+        {
+            ExitAdaptive();   // 选「自定义」即退出自适应，确保主题不再跟随壁纸、菜单正确显示「自定义」
+            new FenceSettingsWindow(_fence, this, "custom").ShowDialog();
+            UpdatePresetChecks();
+            Save();
+        }
 
         // 按当前主题给「预设主题」子菜单四项打勾（自适应/浅色/深色/自定义，互斥）。
         private void UpdatePresetChecks()

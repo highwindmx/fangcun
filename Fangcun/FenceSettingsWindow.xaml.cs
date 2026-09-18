@@ -10,7 +10,6 @@ namespace Fangcun
         private readonly Fence _fence;
         private readonly FenceWindow? _owner;   // 围栏窗口，用于回调预设应用 / 退出自适应
         private readonly string? _focus;        // "custom"=进入配置窗后聚焦自定义配色区
-        private bool _syncUiBusy;               // 闸门：Loaded 赋初值 / 配置窗关闭回写时不触发 SelectionChanged 误处理
 
         public FenceSettingsWindow(Fence fence, FenceWindow? owner = null, string? focus = null)
         {
@@ -32,75 +31,21 @@ namespace Fangcun
             {
                 // 「自定义」入口：把配色区滚入视野（该窗不再含预设区，预设在右键「预设主题」子菜单）。
                 if (_focus == "custom") GroupCustom.BringIntoView();
-                // 初始选中：用 _syncUiBusy 闸门避免 Loaded 赋初值触发 SelectionChanged（否则进入设置窗会误弹配置窗）
-                _syncUiBusy = true;
-                // 层叠模式下拉框初值：按当前围栏模式选中（枚举顺序与下拉项顺序一致：Bottom/Top/Window）
-                LayerCombo.SelectedIndex = (int)_fence.LayerMode;
-                // 同步模式下拉框初值（Manual=0 / Watch=1）
-                SyncCombo.SelectedIndex = (int)_fence.SyncMode;
-                _syncUiBusy = false;
+                // 初始化透明度滑块当前值（背景色/栏底色可能含 alpha）
+                SyncAlphaSliders();
             };
-        }
-
-        // 同步模式切换：手动直接生效；监视则弹出配置窗输入地址+后缀，确认后启动监视，取消则回退原模式。
-        private void SyncCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-        {
-            if (_syncUiBusy) return;
-            if (SyncCombo.SelectedItem is not System.Windows.Controls.ComboBoxItem ci || ci.Tag is not string tag) return;
-            if (!System.Enum.TryParse<SyncMode>(tag, out var m)) return;
-            if (m == SyncMode.Manual)
-            {
-                if (_fence.SyncMode == SyncMode.Manual) return;
-                _fence.SyncMode = SyncMode.Manual;
-                _owner?.ApplySyncMode();   // 关闭监视，保留现有条目转为手动管理
-                App.Save();
-            }
-            else
-            {
-                OpenWatchConfig();
-            }
-        }
-
-        private void SyncConfig_Click(object sender, RoutedEventArgs e) => OpenWatchConfig();
-
-        private void OpenWatchConfig()
-        {
-            _syncUiBusy = true;
-            try
-            {
-                var dlg = new MonitorConfigWindow(_fence) { Owner = this };
-                if (dlg.ShowDialog() == true)
-                {
-                    _fence.SyncMode = SyncMode.Watch;
-                    _owner?.ApplySyncMode();
-                    App.Save();
-                }
-                // 把下拉框对齐实际模式：确认→监视；取消→维持原模式（多为手动）
-                SyncCombo.SelectedIndex = (int)_fence.SyncMode;
-            }
-            finally { _syncUiBusy = false; }
-        }
-
-        // 层叠模式切换：写回模型 → 通知围栏窗口即时应用（owner / Topmost / 不激活 / z 序）→ 持久化。
-        private void LayerCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-        {
-            if (LayerCombo.SelectedIndex < 0) return;
-            var mode = (LayerMode)LayerCombo.SelectedIndex;
-            if (_fence.LayerMode != mode)
-            {
-                _fence.LayerMode = mode;
-                _owner?.ApplyLayerMode();
-                App.Save();
-            }
         }
 
         public FenceStyle Cfg => _fence.Style;
         public List<string> Fonts { get; }
 
-        // 手动改自定义配色（文本失去焦点）：退出自适应，使手填色不被后续壁纸重算覆盖。
-        // 右键「预设主题」子菜单会据 ResolveTheme 把「自定义」项打勾，反映当前为自定义状态。
+        // 手动改自定义配色（文本失去焦点）：退出自适应，使手填色不被后续壁纸重算覆盖；
+        // 同时把透明度滑块同步到文本框可能新写入的 alpha。
         private void CustomColor_LostFocus(object sender, RoutedEventArgs e)
-            => _owner?.ExitAdaptive();
+        {
+            _owner?.ExitAdaptive();
+            SyncAlphaSliders();
+        }
 
         private void PickTitleColor_Click(object sender, RoutedEventArgs e)
         {
@@ -112,8 +57,8 @@ namespace Fangcun
         private void PickTitleBarColor_Click(object sender, RoutedEventArgs e)
         {
             _owner?.ExitAdaptive();
-            var c = PickColor(_fence.Style.TitleBarColor);
-            if (c != null) { _fence.Style.TitleBarColor = c; App.Save(); }
+            var c = PickRgbKeepAlpha(_fence.Style.TitleBarColor);
+            if (c != null) { _fence.Style.TitleBarColor = c; App.Save(); SyncAlphaSliders(); }
         }
 
         private void PickItemColor_Click(object sender, RoutedEventArgs e)
@@ -123,21 +68,60 @@ namespace Fangcun
             if (c != null) { _fence.Style.ItemColor = c; App.Save(); }
         }
 
+        // 背景色/栏底色：取 RGB 进拾色器，写回时保留原 alpha（透明度由滑块单独控制）。
         private void PickBgColor_Click(object sender, RoutedEventArgs e)
         {
             _owner?.ExitAdaptive();
-            // BgColor 形如 #AARRGGBB：取 RGB 进拾色器，写回时保留原 alpha
-            string cur = _fence.Style.BgColor;
-            string rgb = cur.Length >= 9 ? "#" + cur.Substring(3) : (cur.Length == 7 ? cur : "#000000");
+            var c = PickRgbKeepAlpha(_fence.Style.BgColor);
+            if (c != null) { _fence.Style.BgColor = c; App.Save(); SyncAlphaSliders(); }
+        }
+
+        // 透明度滑块：改背景色 alpha，保留 RGB
+        private bool _alphaBusy;
+        private void BgAlpha_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_alphaBusy) return;
+            var (_, rgb) = SplitColor(_fence.Style.BgColor);
+            _fence.Style.BgColor = MakeColor((byte)BgAlpha.Value, rgb);
+            App.Save();
+        }
+        private void BarAlpha_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_alphaBusy) return;
+            var (_, rgb) = SplitColor(_fence.Style.TitleBarColor);
+            _fence.Style.TitleBarColor = MakeColor((byte)BarAlpha.Value, rgb);
+            App.Save();
+        }
+        private void SyncAlphaSliders()
+        {
+            _alphaBusy = true;
+            try
+            {
+                BgAlpha.Value = SplitColor(_fence.Style.BgColor).alpha;
+                BarAlpha.Value = SplitColor(_fence.Style.TitleBarColor).alpha;
+            }
+            finally { _alphaBusy = false; }
+        }
+        private static (byte alpha, string rgb) SplitColor(string c)
+        {
+            if (!string.IsNullOrEmpty(c) && c.Length >= 9 && c[0] == '#')
+                return (byte.Parse(c.Substring(1, 2), System.Globalization.NumberStyles.HexNumber), "#" + c.Substring(3));
+            if (!string.IsNullOrEmpty(c) && c.Length == 7 && c[0] == '#')
+                return (255, c);
+            return (255, "#000000");
+        }
+        private static string MakeColor(byte alpha, string rgb) => "#" + alpha.ToString("X2") + rgb.TrimStart('#');
+        private static string? PickRgbKeepAlpha(string current)
+        {
+            var (a, rgb) = SplitColor(current);
             using var dlg = new ColorDialog();
             try { dlg.Color = System.Drawing.ColorTranslator.FromHtml(rgb); } catch { }
             if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
                 var col = dlg.Color;
-                string alpha = cur.Length >= 9 ? cur.Substring(1, 2) : "26";
-                _fence.Style.BgColor = "#" + alpha + col.R.ToString("X2") + col.G.ToString("X2") + col.B.ToString("X2");
-                App.Save();
+                return MakeColor(a, "#" + col.R.ToString("X2") + col.G.ToString("X2") + col.B.ToString("X2"));
             }
+            return null;
         }
 
         private static string? PickColor(string current)
