@@ -1236,7 +1236,7 @@ namespace Fangcun
                 .Where(it => !it.IsEllipsis && !string.IsNullOrWhiteSpace(it.Path))
                 .Select(it => it.Path)
                 .ToList();
-            XichuangWin.Launcher.ActivateWorkspace(_fence.Title, paths);
+            Fangcun.Xichuang.Launcher.ActivateWorkspace(_fence.Title, paths);
         }
 
         // ---------- 重命名（标题） ----------

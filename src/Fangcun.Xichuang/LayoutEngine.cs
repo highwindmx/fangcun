@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using XiChuang.Native;
+using Fangcun.Xichuang.Native;
 
-namespace XichuangWin;
+namespace Fangcun.Xichuang;
 
 /// <summary>把一批窗口按布局铺到 stage 矩形内。纯移动/缩放真实窗口，绝不 SetParent 嵌入。</summary>
 public static class LayoutEngine

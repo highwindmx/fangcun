@@ -4,7 +4,7 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fangcun", "src\Fangcun\Fangcun.csproj", "{8C5B2E1A-3D4F-4A6B-9C2D-111111111111}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XichuangWin", "src\XichuangWin\XichuangWin.csproj", "{8C5B2E1A-3D4F-4A6B-9C2D-222222222222}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fangcun.Xichuang", "src\Fangcun.Xichuang\Fangcun.Xichuang.csproj", "{8C5B2E1A-3D4F-4A6B-9C2D-222222222222}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

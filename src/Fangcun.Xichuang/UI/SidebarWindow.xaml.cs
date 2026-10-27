@@ -7,9 +7,9 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using XiChuang.Native;
+using Fangcun.Xichuang.Native;
 
-namespace XichuangWin;
+namespace Fangcun.Xichuang;
 
 /// <summary>栖窗侧栏（单例）：左/右/上/下停靠，顶端固定宽度 tab 切换多个命名栖窗。
 /// 一个侧栏一个任务栏图标；最小化侧栏联动最小化活动栖窗的窗口（3a）。</summary>
@@ -21,6 +21,9 @@ public partial class SidebarWindow : Window
     private DispatcherTimer? _hoverTimer;
     private nint _hoverHwnd;
 
+    /// <summary>活性心跳：周期性核对槽位还在不在，让「窗口被关掉 → 清单立刻灰显」不再依赖用户点击。</summary>
+    private DispatcherTimer? _aliveTimer;
+
     // 拖拽起点（用于区分「单击加入」与「拖动收集」）
     private Point _dragOrigin;
     private bool _dragOriginValid;
@@ -30,6 +33,38 @@ public partial class SidebarWindow : Window
         InitializeComponent();
         SyncTabs();
         RefreshActiveList();
+        StartAliveWatch();
+    }
+
+    // ---------- 活性心跳 ----------
+    private void StartAliveWatch()
+    {
+        _aliveTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
+        _aliveTimer.Tick -= OnAliveTick;
+        _aliveTimer.Tick += OnAliveTick;
+        _aliveTimer.Start();
+    }
+
+    private void OnAliveTick(object? sender, EventArgs e)
+    {
+        if (WindowState == WindowState.Minimized) return;
+
+        var inst = Launcher.ActiveInstance;
+        if (inst is null || inst.Wm.Slots.Count == 0) return;
+
+        bool died = inst.Wm.SyncAlive();                              // 死句柄 → 已关闭（槽位自己发通知）
+        inst.Wm.SyncTitles();                                         // 文档改名 / 网页跳转
+        bool revived = inst.Wm.TryReviveAll(Launcher.Occupied(inst.Name)); // 用户自己重开的 → 认领回槽位
+
+        if (revived)
+        {
+            inst.Wm.Reflow();                                         // 新认领的窗口补进布局
+            Launcher.SaveNow();
+        }
+        else if (died)
+        {
+            Launcher.SaveNow();                                       // 已关闭状态落到配置里，下次打开还是灰的
+        }
     }
 
     // ---------- 定位：按配置停靠边 + 显示器 ----------

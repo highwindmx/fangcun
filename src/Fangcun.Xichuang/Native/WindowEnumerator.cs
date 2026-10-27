@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Windows.Media;
 
-namespace XiChuang.Native;
+namespace Fangcun.Xichuang.Native;
 
 public sealed record WindowInfo(IntPtr Handle, uint Pid, string ProcessName, string Title)
 {

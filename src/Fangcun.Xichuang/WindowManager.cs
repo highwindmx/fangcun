@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
-using XiChuang.Native;
+using Fangcun.Xichuang.Native;
 
-namespace XichuangWin;
+namespace Fangcun.Xichuang;
 
 /// <summary>栖窗核心：归集窗口、按布局排布（移动/缩放）、悬停聚焦、移除。
 /// 所有操作基于真实窗口的 SetWindowPos/ShowWindow，不嵌入、不 SetParent。
@@ -119,15 +119,35 @@ public class WindowManager
 
     /// <summary>把已销毁的窗口标为「已关闭」（Hwnd 归零、槽位保留），而不是直接删掉——
     /// 这样清单里仍有一行，可点击用 SourcePath / ExePath 重新打开。</summary>
-    public void SyncAlive()
+    /// <returns>是否有槽位从「活」变成「已关闭」。</returns>
+    public bool SyncAlive()
     {
+        bool changed = false;
         foreach (var s in Slots)
         {
             if (s.Hwnd == nint.Zero || Win32.IsWindow(s.Hwnd)) continue;
             _assigned.Remove(s.Hwnd);
-            s.Hwnd = nint.Zero;
             s.Pending = false;
+            s.Hwnd = nint.Zero;   // 槽位自身会发出通知，清单立刻灰显
+            changed = true;
         }
+        return changed;
+    }
+
+    /// <summary>把活窗口的最新标题刷进槽位（文档改名、网页跳转等），返回是否有改动。
+    /// 无响应窗口直接跳过，防止 GetWindowText 阻塞 UI 线程。</summary>
+    public bool SyncTitles()
+    {
+        bool changed = false;
+        foreach (var s in Slots)
+        {
+            if (!s.Alive || Win32.IsHungAppWindow(s.Hwnd)) continue;
+            string t = Win32.GetTitle(s.Hwnd);
+            if (string.IsNullOrWhiteSpace(t) || t == s.Title) continue;
+            s.Title = t;
+            changed = true;
+        }
+        return changed;
     }
 
     /// <summary>尝试把「已关闭」的槽位与用户自己重新打开的窗口对上（标题 → 进程+类 → 进程）。

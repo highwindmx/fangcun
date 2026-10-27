@@ -4,9 +4,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Windows.Threading;
-using XiChuang.Native;
+using Fangcun.Xichuang.Native;
 
-namespace XichuangWin;
+namespace Fangcun.Xichuang;
 
 /// <summary>
 /// 一个栖窗实例：独立命名、独立槽位集合（多实例互不越界）。

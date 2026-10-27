@@ -1,8 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
-using XiChuang.Native;
+using Fangcun.Xichuang.Native;
 
-namespace XichuangWin;
+namespace Fangcun.Xichuang;
 
 public partial class SettingsWindow : Window
 {

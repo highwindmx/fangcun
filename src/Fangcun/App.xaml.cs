@@ -108,7 +108,7 @@ namespace Fangcun
                 Save(); // 把 EnsureOnScreen 可能写入/修正的 ScreenId·RelX/RelY 立即落盘，避免依赖后续拖动才持久化
 
                 SetupTray();
-                XichuangWin.Launcher.Initialize();
+                Fangcun.Xichuang.Launcher.Initialize();
             }
             catch (Exception ex)
             {
@@ -164,14 +164,14 @@ namespace Fangcun
                 menu.Items.Add(new ToolStripSeparator());
                 var xcGather = new ToolStripMenuItem("栖窗（集）");
                 xcGather.ToolTipText = "把当前未归入其它栖窗的窗口收进一个新工作区";
-                xcGather.Click += (_, _) => XichuangWin.Launcher.GatherIntoNew();
+                xcGather.Click += (_, _) => Fangcun.Xichuang.Launcher.GatherIntoNew();
                 menu.Items.Add(xcGather);
                 var xcRestore = new ToolStripMenuItem("栖窗（复）");
                 xcRestore.ToolTipText = "按上次保存的配置恢复栖窗并显示";
-                xcRestore.Click += (_, _) => XichuangWin.Launcher.RestorePrevious();
+                xcRestore.Click += (_, _) => Fangcun.Xichuang.Launcher.RestorePrevious();
                 menu.Items.Add(xcRestore);
                 var xcSettings = new ToolStripMenuItem("栖窗设置");
-                xcSettings.Click += (_, _) => XichuangWin.Launcher.ShowSettings();
+                xcSettings.Click += (_, _) => Fangcun.Xichuang.Launcher.ShowSettings();
                 menu.Items.Add(xcSettings);
 
                 menu.Items.Add(new ToolStripSeparator());
@@ -243,7 +243,7 @@ namespace Fangcun
         protected override void OnExit(ExitEventArgs e)
         {
             // 退出前把栖窗快照写盘（名字 + 布局 + 成员窗口身份），下次启动才能恢复
-            try { XichuangWin.Launcher.Shutdown(); } catch { }
+            try { Fangcun.Xichuang.Launcher.Shutdown(); } catch { }
             _tray?.Dispose();
             if (_ownsMutex) _mutex?.ReleaseMutex();
             _mutex?.Dispose();

@@ -4,7 +4,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace XichuangWin;
+namespace Fangcun.Xichuang;
 
 /// <summary>悬停/点击触发模式。</summary>
 public enum TriggerMode { Hover, Click }

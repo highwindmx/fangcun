@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
-using XiChuang.Native;
+using Fangcun.Xichuang.Native;
 
-namespace XichuangWin;
+namespace Fangcun.Xichuang;
 
 /// <summary>栖窗统一入口，由方寸（同一进程）调用。
 /// 架构：单例 SidebarWindow（顶端 tab 切换）+ 多个命名栖窗实例共存、互不越界。

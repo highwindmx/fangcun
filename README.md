@@ -56,10 +56,10 @@ Windows 桌面上其实有两种"乱"：
 开发构建：
 
 ```bat
-dotnet build Xichuang.sln -c Release
+dotnet build Fangcun.sln -c Release
 ```
 
-产物在 `src/Fangcun/bin/Release/net10.0-windows/Fangcun.exe`（栖窗模块以 `XichuangWin.dll` 形式一并输出）。
+产物在 `src/Fangcun/bin/Release/net10.0-windows/Fangcun.exe`（栖窗模块以 `Fangcun.Xichuang.dll` 形式一并输出）。
 
 发布：一条命令产出两个版本，也可分别构建。
 
@@ -177,25 +177,25 @@ dotnet publish src\Fangcun\Fangcun.csproj -c Release -r win-x64 --self-contained
 
 ```text
 fangcun/
-├── Xichuang.sln                 解决方案（方寸 + 栖窗）
+├── Fangcun.sln                 解决方案（方寸 + 栖窗）
 ├── README.md
 ├── CHANGELOG.md
 ├── LICENSE
 ├── docs/
-│   └── demo-sidebar.png         栖窗侧栏演示图
+│   └── demo-sidebar.png        栖窗侧栏演示图
 ├── tools/
-│   ├── publish-release.bat      一键发布 full/lite 两个单文件 exe 到 dist/
-│   └── regen_icon.py            重新生成应用图标
+│   ├── publish-release.bat     一键发布 full/lite 两个单文件 exe 到 dist/
+│   └── regen_icon.py           重新生成应用图标
 └── src/
-    ├── Fangcun/                 方寸：桌面图标围栏（程序入口，输出 Fangcun.exe）
-    └── XichuangWin/             栖窗模块：窗口归集（类库，输出 XichuangWin.dll）
-        ├── Native/              Win32 声明、窗口枚举
-        ├── UI/                  侧栏、设置窗
-        ├── Launcher.cs          统一入口（托盘/围栏调用）
-        ├── WindowManager.cs     窗口集合、布局重排、聚焦
-        ├── WindowSlot.cs        槽位模型（活窗口 / 已关闭 / 打开中）
-        ├── LayoutEngine.cs      四种布局的矩形计算与落位
-        └── XichuangConfig.cs    配置与持久化
+    ├── Fangcun/                方寸：桌面图标围栏（程序入口，输出 Fangcun.exe）
+    └── Fangcun.Xichuang/       栖窗模块：窗口归集（类库，输出 Fangcun.Xichuang.dll）
+        ├── Native/             Win32 声明、窗口枚举
+        ├── UI/                 侧栏、设置窗
+        ├── Launcher.cs         统一入口（托盘/围栏调用）
+        ├── WindowManager.cs    窗口集合、布局重排、聚焦
+        ├── WindowSlot.cs       槽位模型（活窗口 / 已关闭 / 打开中）
+        ├── LayoutEngine.cs     四种布局的矩形计算与落位
+        └── XichuangConfig.cs   配置与持久化
 ```
 
 ## 已知限制

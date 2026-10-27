@@ -2,7 +2,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace XiChuang.Native;
+namespace Fangcun.Xichuang.Native;
 
 /// <summary>
 /// 栖窗所需的 Win32 P/Invoke 声明（M0 阶段只覆盖窗口发现 + 嵌入 + 释放）。
@@ -72,7 +72,7 @@ public static class Win32
     public const uint MONITOR_DEFAULTTOPRIMARY = 1;
     public const uint MONITOR_DEFAULTTONEAREST = 2;
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     public struct MONITORINFO
     {
         public uint cbSize;
@@ -135,7 +135,7 @@ public static class Win32
         return GetDpiForSystem() / 96.0;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     public struct RECT
     {
         public int Left;
@@ -147,14 +147,14 @@ public static class Win32
         public RECT(int l, int t, int r, int b) { Left = l; Top = t; Right = r; Bottom = b; }
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     public struct POINT
     {
         public int X;
         public int Y;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     public struct WINDOWPLACEMENT
     {
         public uint length;
@@ -165,7 +165,7 @@ public static class Win32
         public RECT rcNormalPosition;
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    [StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     public struct WNDCLASSEX
     {
         public uint cbSize;
@@ -211,6 +211,11 @@ public static class Win32
 
     [DllImport("user32.dll")]
     public static extern bool IsWindow(IntPtr hWnd);
+
+    /// <summary>窗口是否「已挂起」（不响应消息）。心跳里读标题前先问一下，
+    /// 避免 GetWindowText 卡在无响应的窗口上把侧栏也拖住。</summary>
+    [DllImport("user32.dll")]
+    public static extern bool IsHungAppWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr hWnd);
