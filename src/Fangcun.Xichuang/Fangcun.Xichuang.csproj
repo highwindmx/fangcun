@@ -9,7 +9,7 @@
     <RootNamespace>Fangcun.Xichuang</RootNamespace>
     <AssemblyName>Fangcun.Xichuang</AssemblyName>
     <PlatformTarget>x64</PlatformTarget>
-    <Version>0.0.10</Version>
+    <Version>0.0.8</Version>
   </PropertyGroup>
 
 </Project>
