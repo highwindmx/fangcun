@@ -47,7 +47,8 @@ Windows 桌面上其实有两种"乱"：
 ## 系统要求
 
 -   Windows 10 / 11，x64
--   .NET 10 SDK（仅构建需要；运行可用自包含发布版）
+-   .NET 10 SDK（仅构建需要）
+-   运行时依赖：自包含版无；框架依赖版需 .NET 10 桌面运行时（x64）
 -   Visual Studio 2022（可选，命令行构建亦可）
 
 ## 构建
@@ -60,28 +61,48 @@ dotnet build Xichuang.sln -c Release
 
 产物在 `src/Fangcun/bin/Release/net10.0-windows/Fangcun.exe`（栖窗模块以 `XichuangWin.dll` 形式一并输出）。
 
-发布为可拷贝的单文件（目标机无需安装 .NET）：
+发布：一条命令产出两个版本，也可分别构建。
 
 ```bat
+tools\publish-release.bat          :: 两个都构建
+tools\publish-release.bat full     :: 只要自包含版
+tools\publish-release.bat lite     :: 只要框架依赖版
+```
+
+| 产物 | 体积 | 目标机要求 |
+| --- | --- | --- |
+| `dist\Fangcun-win-x64-full.exe` | 约 78 MB | 无，双击即跑 |
+| `dist\Fangcun-win-x64-lite.exe` | 约 0.3 MB | 需装 [.NET 10 桌面运行时](https://dotnet.microsoft.com/download/dotnet/10.0)（Desktop Runtime，x64） |
+
+两个都是**单个 exe**，给谁发哪个看对方机器：
+
+-   不确定、或对方是普通用户 → 发 **full**，最省事；
+-   对方开发机/已装 .NET 10 桌面运行时 → 发 **lite**，邮件附件都塞得下。
+
+手动命令（等价于脚本内部做的事）：
+
+```bat
+:: full —— 自包含
 dotnet publish src\Fangcun\Fangcun.csproj -c Release -r win-x64 --self-contained true ^
   -p:PublishSingleFile=true ^
   -p:IncludeNativeLibrariesForSelfExtract=true ^
   -p:EnableCompressionInSingleFile=true ^
   -p:PublishReadyToRun=true ^
-  -o dist
+  -p:DebugType=none -o dist\_full
+
+:: lite —— 框架依赖
+dotnet publish src\Fangcun\Fangcun.csproj -c Release -r win-x64 --self-contained false ^
+  -p:PublishSingleFile=true ^
+  -p:DebugType=none -o dist\_lite
 ```
 
-或直接双击/运行 `tools\publish-release.bat`（内部就是上面这条命令，输出到 `dist\`）。
-
-产物为 `dist\Fangcun.exe` 单个文件，自带 .NET 运行时，拷到任意 64 位 Windows 10/11 即可运行。
-
-| 参数 | 作用 |
-| --- | --- |
-| `--self-contained true` | 自带运行时，目标机不用装 .NET |
-| `-p:PublishSingleFile=true` | 打成单个 exe |
-| `-p:IncludeNativeLibrariesForSelfExtract=true` | 把 WPF 的原生库（`wpfgfx_cor3.dll` 等）也塞进 exe，否则会散落在旁边 |
-| `-p:EnableCompressionInSingleFile=true` | 压缩，体积约减一半，代价是首次启动稍慢 |
-| `-p:PublishReadyToRun=true` | 预编译，启动更快，体积略增 |
+| 参数 | 作用 | 适用 |
+| --- | --- | --- |
+| `--self-contained` | `true` 自带运行时；`false` 依赖目标机已装 | 两者 |
+| `-p:PublishSingleFile=true` | 打成单个 exe | 两者 |
+| `-p:IncludeNativeLibrariesForSelfExtract=true` | 把 WPF 的原生库（`wpfgfx_cor3.dll` 等）也塞进 exe，否则会散落在旁边 | 仅 full |
+| `-p:EnableCompressionInSingleFile=true` | 压缩，体积约减一半 | **仅 full**（框架依赖版带此参数会报 `NETSDK1176`） |
+| `-p:PublishReadyToRun=true` | 预编译，启动更快，体积略增 | 仅 full |
 
 ⚠️ **不要加 `-p:PublishTrimmed=true`**：WPF 依赖 XAML 反射，裁剪后会在运行时报找不到类型。
 
@@ -163,7 +184,7 @@ fangcun/
 ├── docs/
 │   └── demo-sidebar.png         栖窗侧栏演示图
 ├── tools/
-│   ├── publish-release.bat      一键发布单文件 exe 到 dist/
+│   ├── publish-release.bat      一键发布 full/lite 两个单文件 exe 到 dist/
 │   └── regen_icon.py            重新生成应用图标
 └── src/
     ├── Fangcun/                 方寸：桌面图标围栏（程序入口，输出 Fangcun.exe）

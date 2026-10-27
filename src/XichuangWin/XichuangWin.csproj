@@ -9,7 +9,7 @@
     <RootNamespace>XichuangWin</RootNamespace>
     <AssemblyName>XichuangWin</AssemblyName>
     <PlatformTarget>x64</PlatformTarget>
-    <Version>0.1.0</Version>
+    <Version>0.0.8</Version>
   </PropertyGroup>
 
 </Project>
