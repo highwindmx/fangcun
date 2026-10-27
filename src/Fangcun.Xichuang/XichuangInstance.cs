@@ -145,11 +145,12 @@ public class XichuangInstance
     }
 
     /// <summary>重新打开一个已关闭的槽位，并在窗口出现后回填该槽位（不新增行）。</summary>
-    public void ReopenSlot(WindowSlot slot)
+    /// <summary>重开一个已关闭的槽位。返回是否真的发出了打开请求（false = 没有任何可用线索）。</summary>
+    public bool ReopenSlot(WindowSlot slot)
     {
-        if (slot.Alive) return;
+        if (slot.Alive) return false;
         var snap = Snapshot();
-        if (!slot.TryReopen()) return;
+        if (!slot.TryReopen()) return false;
 
         slot.Pending = true;
         Launcher.RefreshActiveList();
@@ -158,6 +159,7 @@ public class XichuangInstance
             ? new List<string>()
             : new List<string> { slot.SourcePath! };
         BeginCapture(snap, paths, new List<WindowSlot>(), slot, TimeSpan.FromSeconds(15));
+        return true;
     }
 
     private static Dictionary<nint, WindowInfo> Snapshot()

@@ -188,6 +188,12 @@
               <Border x:Name="row" Style="{StaticResource RowBorder}"
                       BorderThickness="1" BorderBrush="Transparent"
                       MouseEnter="Row_Enter" MouseLeave="Row_Leave" MouseLeftButtonDown="Row_Click">
+                <Border.ContextMenu>
+                  <ContextMenu>
+                    <MenuItem Header="重新打开" Click="RowMenu_Reopen"/>
+                    <MenuItem Header="从清单移出" Click="RowMenu_Forget"/>
+                  </ContextMenu>
+                </Border.ContextMenu>
                 <Grid>
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>

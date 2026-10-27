@@ -106,10 +106,13 @@ public class WindowSlot : INotifyPropertyChanged
         }
     }
 
-    /// <summary>是否有可用于重开的线索。</summary>
-    public bool CanReopen => !Alive && (PathExists(SourcePath) || PathExists(ExePath));
+    /// <summary>是否有可用于重开的线索。只要有进程名就算「可以一试」——
+    /// 宁可点了失败再提示，也不能因为线索暂时查不到就把整行当废料删掉。</summary>
+    public bool CanReopen => !Alive && (PathExists(SourcePath) || PathExists(ExePath)
+                                        || (!string.IsNullOrWhiteSpace(ProcessName) && ProcessName != "?"));
 
-    /// <summary>用已有线索重新打开。返回是否真的发出了打开请求。</summary>
+    /// <summary>用已有线索重新打开。返回是否真的发出了打开请求。
+    /// 线索优先级：围栏源文件 → 记录下来的 exe → 现按进程名反查 exe → 交给 shell 按程序名启动。</summary>
     public bool TryReopen()
     {
         try
@@ -122,6 +125,18 @@ public class WindowSlot : INotifyPropertyChanged
             if (PathExists(ExePath))
             {
                 Process.Start(new ProcessStartInfo(ExePath!) { UseShellExecute = true });
+                return true;
+            }
+            string? found = WindowManager.ExePathByProcessName(ProcessName);
+            if (PathExists(found))
+            {
+                ExePath = found;                    // 顺手补上，下次不必再查
+                Process.Start(new ProcessStartInfo(found!) { UseShellExecute = true });
+                return true;
+            }
+            if (!string.IsNullOrWhiteSpace(ProcessName) && ProcessName != "?")
+            {
+                Process.Start(new ProcessStartInfo(ProcessName) { UseShellExecute = true });
                 return true;
             }
         }

@@ -217,6 +217,41 @@ public static class Win32
     [DllImport("user32.dll")]
     public static extern bool IsHungAppWindow(IntPtr hWnd);
 
+    // ---- 取进程 exe 路径 ----
+    // 比 Process.MainModule 可靠：只需 QUERY_LIMITED_INFORMATION 权限，
+    // 对提权进程、跨位数进程也能拿到路径（MainModule 常见 AccessDenied）。
+
+    public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool CloseHandle(IntPtr hObject);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool QueryFullProcessImageNameW(IntPtr hProcess, uint dwFlags,
+        StringBuilder lpExeName, ref uint lpdwSize);
+
+    /// <summary>进程主模块路径；拿不到返回 null。</summary>
+    public static string? ProcessImagePath(uint pid)
+    {
+        if (pid == 0) return null;
+        IntPtr h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (h != IntPtr.Zero)
+        {
+            try
+            {
+                var sb = new StringBuilder(1024);
+                uint size = (uint)sb.Capacity;
+                if (QueryFullProcessImageNameW(h, 0, sb, ref size) && size > 0)
+                    return sb.ToString(0, (int)size);
+            }
+            finally { CloseHandle(h); }
+        }
+        return null;
+    }
+
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr hWnd);
 

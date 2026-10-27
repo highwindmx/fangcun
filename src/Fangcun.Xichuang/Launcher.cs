@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Fangcun.Xichuang.Native;
 
@@ -292,7 +293,8 @@ public static class Launcher
                     Process = slot.ProcessName,
                     Class = slot.ClassName,
                     Title = slot.Title,
-                    SourcePath = slot.SourcePath
+                    SourcePath = slot.SourcePath,
+                    ExePath = slot.ExePath
                 });
             }
             saved.Add(si);
@@ -323,9 +325,17 @@ public static class Launcher
             foreach (var sw in s.Windows)
             {
                 nint h = MatchLive(live, sw, used);
+
+                // 重开线索：优先用快照里存的 exe 路径；旧配置没有这一项，就用进程名当场反查，
+                // 否则恢复出来的槽位一旦被关掉就只能「移出」，点 ↻ 也不会重开。
+                string? exe = !string.IsNullOrWhiteSpace(sw.ExePath) && File.Exists(sw.ExePath)
+                    ? sw.ExePath
+                    : WindowManager.ExePathByProcessName(sw.Process);
+
                 var slot = new WindowSlot
                 {
                     SourcePath = sw.SourcePath,
+                    ExePath = exe,
                     ProcessName = sw.Process,
                     ClassName = sw.Class,
                     Title = sw.Title

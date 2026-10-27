@@ -31,6 +31,10 @@ public class SavedWindow
 
     /// <summary>围栏打开的文件/文件夹路径。有了它，窗口关掉后仍能在清单里点击重新打开（最准的线索）。</summary>
     public string? SourcePath { get; set; }
+
+    /// <summary>程序 exe 完整路径。手动「加窗」进来的窗口没有 SourcePath，
+    /// 全靠它作为重开线索；不存的话，重启后这些槽位就点不开了（点了只会被当作移出）。</summary>
+    public string? ExePath { get; set; }
 }
 
 /// <summary>一个栖窗的持久化快照。</summary>

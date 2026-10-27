@@ -52,19 +52,11 @@ public partial class SidebarWindow : Window
         var inst = Launcher.ActiveInstance;
         if (inst is null || inst.Wm.Slots.Count == 0) return;
 
-        bool died = inst.Wm.SyncAlive();                              // 死句柄 → 已关闭（槽位自己发通知）
-        inst.Wm.SyncTitles();                                         // 文档改名 / 网页跳转
-        bool revived = inst.Wm.TryReviveAll(Launcher.Occupied(inst.Name)); // 用户自己重开的 → 认领回槽位
-
-        if (revived)
-        {
-            inst.Wm.Reflow();                                         // 新认领的窗口补进布局
-            Launcher.SaveNow();
-        }
-        else if (died)
-        {
-            Launcher.SaveNow();                                       // 已关闭状态落到配置里，下次打开还是灰的
-        }
+        // 只做「死句柄 → 已关闭」这一件事，槽位自己会把通知发给界面。
+        // 认领窗口（TryReviveAll）与标题同步都留在 RefreshActiveList 里、由用户操作触发：
+        // 每 600 ms 抢一次窗口会触发 Reflow，把用户正在点/刚打开的窗口挪到布局位上，
+        // 表现就是「窗口突然自己动了、点不住」。
+        if (inst.Wm.SyncAlive()) Launcher.SaveNow();
     }
 
     // ---------- 定位：按配置停靠边 + 显示器 ----------
@@ -405,7 +397,8 @@ public partial class SidebarWindow : Window
         if (_hoverHwnd != nint.Zero) ActiveWm?.Focus(_hoverHwnd);
     }
 
-    /// <summary>行尾按钮：活窗口 = ✕ 移出；已关闭 = ↻ 重新打开；没有重开线索则直接移出。</summary>
+    /// <summary>行尾按钮：活窗口 = ✕ 移出；已关闭 = ↻ 重新打开。
+    /// 已关闭的行**永远不会**因为「查不到线索」被自动删掉——先提示，去掉与否交给用户。</summary>
     private void RowAction_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: WindowSlot slot }) return;
@@ -416,16 +409,58 @@ public partial class SidebarWindow : Window
         {
             inst.Wm.Remove(slot.Hwnd);
         }
-        else if (slot.CanReopen)
-        {
-            inst.ReopenSlot(slot);   // 内部会刷新列表
-            return;
-        }
         else
         {
-            inst.Wm.Forget(slot);    // 没有可用的重开线索 → 当「移出」处理
+            if (!inst.ReopenSlot(slot))
+            {
+                System.Windows.MessageBox.Show(
+                    $"「{slot.Display}」没有可用的重开线索（既不知道源文件，也查不到 {slot.ProcessName}.exe）。\n\n" +
+                    "可以手动打开它 —— 打开后这一行会自动复活；也可以右键这一行把它从清单移出。",
+                    "栖窗", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            if (AddPopup.IsOpen) RefreshAddList();
+            return;
         }
 
+        RefreshActiveList();
+        if (AddPopup.IsOpen) RefreshAddList();
+        Launcher.SaveNow();
+    }
+
+    /// <summary>从右键菜单的 PlacementTarget（被右键的那一行）取槽位。</summary>
+    private static WindowSlot? SlotOfMenu(object sender)
+    {
+        if (sender is not MenuItem mi) return null;
+        return mi.Parent is ContextMenu { PlacementTarget: FrameworkElement fe } ? fe.DataContext as WindowSlot : null;
+    }
+
+    /// <summary>右键「重新打开」——已关闭行专用入口，等价于点行尾的 ↻。</summary>
+    private void RowMenu_Reopen(object sender, RoutedEventArgs e)
+    {
+        var slot = SlotOfMenu(sender);
+        var inst = Launcher.ActiveInstance;
+        if (slot is null || inst is null) return;
+
+        if (slot.Alive) { inst.Wm.Focus(slot.Hwnd); return; }
+
+        if (!inst.ReopenSlot(slot))
+        {
+            System.Windows.MessageBox.Show(
+                $"「{slot.Display}」没有可用的重开线索（既不知道源文件，也查不到 {slot.ProcessName}.exe）。\n\n" +
+                "手动打开它，这一行会自动复活。",
+                "栖窗", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        RefreshActiveList();
+    }
+
+    /// <summary>右键「从清单移出」——明确的用户意图，这才允许把槽位删掉。</summary>
+    private void RowMenu_Forget(object sender, RoutedEventArgs e)
+    {
+        var slot = SlotOfMenu(sender);
+        var inst = Launcher.ActiveInstance;
+        if (slot is null || inst is null) return;
+
+        inst.Wm.Forget(slot);
         RefreshActiveList();
         if (AddPopup.IsOpen) RefreshAddList();
         Launcher.SaveNow();

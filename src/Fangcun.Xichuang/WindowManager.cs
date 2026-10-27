@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Fangcun.Xichuang.Native;
@@ -69,12 +70,36 @@ public class WindowManager
         slot.Pending = false;
     }
 
-    /// <summary>进程 exe 完整路径（失败返回 null，权限不足/进程已退出都可能失败）。</summary>
+    /// <summary>进程 exe 完整路径（失败返回 null，进程已退出才会 null）。
+    /// 先用 QueryFullProcessImageName（只读权限即可，提权/跨位数进程也能取到），
+    /// 失败再退回 Process.MainModule。</summary>
     public static string? ExePathOf(uint pid)
     {
         if (pid == 0) return null;
+        string? p = Win32.ProcessImagePath(pid);
+        if (!string.IsNullOrWhiteSpace(p) && File.Exists(p)) return p;
         try { return Process.GetProcessById((int)pid).MainModule?.FileName; }
         catch { return null; }
+    }
+
+    /// <summary>只知道进程名时反查 exe 路径：遍历同名的第一个进程。
+    /// 用于「从配置恢复但没有存 exe 路径」的旧快照——没有它，已关闭的槽位就失去了重开线索。</summary>
+    public static string? ExePathByProcessName(string? processName)
+    {
+        if (string.IsNullOrWhiteSpace(processName) || processName == "?") return null;
+        try
+        {
+            foreach (var p in Process.GetProcessesByName(processName))
+            {
+                using (p)
+                {
+                    string? path = ExePathOf((uint)p.Id);
+                    if (!string.IsNullOrWhiteSpace(path) && File.Exists(path)) return path;
+                }
+            }
+        }
+        catch { }
+        return null;
     }
 
     // ---------------- 归集 ----------------
@@ -134,24 +159,10 @@ public class WindowManager
         return changed;
     }
 
-    /// <summary>把活窗口的最新标题刷进槽位（文档改名、网页跳转等），返回是否有改动。
-    /// 无响应窗口直接跳过，防止 GetWindowText 阻塞 UI 线程。</summary>
-    public bool SyncTitles()
-    {
-        bool changed = false;
-        foreach (var s in Slots)
-        {
-            if (!s.Alive || Win32.IsHungAppWindow(s.Hwnd)) continue;
-            string t = Win32.GetTitle(s.Hwnd);
-            if (string.IsNullOrWhiteSpace(t) || t == s.Title) continue;
-            s.Title = t;
-            changed = true;
-        }
-        return changed;
-    }
-
     /// <summary>尝试把「已关闭」的槽位与用户自己重新打开的窗口对上（标题 → 进程+类 → 进程）。
-    /// occupied 为其它栖窗占用的句柄，避免抢别人的窗口。</summary>
+    /// occupied 为其它栖窗占用的句柄，避免抢别人的窗口。
+    /// 注意：只在用户操作后调用（切 tab / 加窗 / 打开侧栏），不要放进周期性心跳——
+    /// 它会 Reflow，把用户正在点的窗口搬到布局位置上。</summary>
     public bool TryReviveAll(HashSet<nint>? occupied = null)
     {
         if (!Slots.Any(s => !s.Alive && !s.Pending)) return false;
