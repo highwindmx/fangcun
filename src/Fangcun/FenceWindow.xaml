@@ -45,6 +45,7 @@
                 <Grid.ContextMenu>
                     <ContextMenu Opened="TitleCtx_Opened">
                         <MenuItem Header="重命名" Click="MenuRename_Click"/>
+                        <MenuItem Header="栖窗归集" Click="MenuXichuangGather_Click"/>
                         <!-- 预设主题：自适应/浅色/深色 立即应用；自定义→进入配置窗手动调色 -->
                         <MenuItem Header="预设主题">
                             <MenuItem x:Name="PresetAdaptive" Header="自适应" Tag="Adaptive" IsCheckable="True" Click="MenuPreset_Click"/>

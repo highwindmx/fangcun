@@ -1229,6 +1229,16 @@ namespace Fangcun
             cm.IsOpen = true;
         }
 
+        // 3b：以围栏名为栖窗归集——打开围栏内文件/文件夹（默认应用），把产生的窗口拢进对应栖窗，不越界到其他窗口
+        private void MenuXichuangGather_Click(object sender, RoutedEventArgs e)
+        {
+            var paths = _fence.Items
+                .Where(it => !it.IsEllipsis && !string.IsNullOrWhiteSpace(it.Path))
+                .Select(it => it.Path)
+                .ToList();
+            XichuangWin.Launcher.ActivateWorkspace(_fence.Title, paths);
+        }
+
         // ---------- 重命名（标题） ----------
         private void StartRename()
         {

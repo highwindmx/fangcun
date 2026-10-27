@@ -108,6 +108,7 @@ namespace Fangcun
                 Save(); // 把 EnsureOnScreen 可能写入/修正的 ScreenId·RelX/RelY 立即落盘，避免依赖后续拖动才持久化
 
                 SetupTray();
+                XichuangWin.Launcher.Initialize();
             }
             catch (Exception ex)
             {
@@ -147,6 +148,7 @@ namespace Fangcun
                     Visible = true
                 };
                 var menu = new ContextMenuStrip();
+                menu.ShowItemToolTips = true;   // 否则 ToolStripMenuItem.ToolTipText 不生效
                 var autoStart = new ToolStripMenuItem("开机自启") { CheckOnClick = true, Checked = IsAutoStart() };
                 autoStart.CheckedChanged += (_, _) => SetAutoStart(autoStart.Checked);
                 menu.Items.Add(autoStart);
@@ -158,6 +160,19 @@ namespace Fangcun
                 menu.Opening += (_, _) => UpdateToggleAllItem(toggleAll);
                 toggleAll.Click += (_, _) => ToggleAllFences();
                 menu.Items.Add(toggleAll);
+
+                menu.Items.Add(new ToolStripSeparator());
+                var xcGather = new ToolStripMenuItem("栖窗（集）");
+                xcGather.ToolTipText = "把当前未归入其它栖窗的窗口收进一个新工作区";
+                xcGather.Click += (_, _) => XichuangWin.Launcher.GatherIntoNew();
+                menu.Items.Add(xcGather);
+                var xcRestore = new ToolStripMenuItem("栖窗（复）");
+                xcRestore.ToolTipText = "按上次保存的配置恢复栖窗并显示";
+                xcRestore.Click += (_, _) => XichuangWin.Launcher.RestorePrevious();
+                menu.Items.Add(xcRestore);
+                var xcSettings = new ToolStripMenuItem("栖窗设置");
+                xcSettings.Click += (_, _) => XichuangWin.Launcher.ShowSettings();
+                menu.Items.Add(xcSettings);
 
                 menu.Items.Add(new ToolStripSeparator());
                 menu.Items.Add("退出方寸", null, (_, _) => Shutdown());
@@ -227,6 +242,8 @@ namespace Fangcun
 
         protected override void OnExit(ExitEventArgs e)
         {
+            // 退出前把栖窗快照写盘（名字 + 布局 + 成员窗口身份），下次启动才能恢复
+            try { XichuangWin.Launcher.Shutdown(); } catch { }
             _tray?.Dispose();
             if (_ownsMutex) _mutex?.ReleaseMutex();
             _mutex?.Dispose();

@@ -3,6 +3,10 @@ bin/
 obj/
 *.user
 *.suo
+.vs/
+
+## Publish output (tools/publish-release.bat)
+dist/
 
 ## WorkBuddy local data (not part of the deliverable)
 .workbuddy/

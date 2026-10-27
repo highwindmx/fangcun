@@ -1,0 +1,40 @@
+<Window x:Class="XichuangWin.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="栖窗设置" Height="400" Width="360"
+        WindowStyle="ToolWindow" ShowInTaskbar="False" ResizeMode="NoResize">
+  <StackPanel Margin="14">
+    <StackPanel Orientation="Horizontal" Margin="0,4">
+      <TextBlock Text="触发方式" Width="80" VerticalAlignment="Center"/>
+      <ComboBox x:Name="TriggerCombo" Width="160">
+        <ComboBoxItem Content="悬停" Tag="Hover"/>
+        <ComboBoxItem Content="单击" Tag="Click"/>
+      </ComboBox>
+    </StackPanel>
+    <StackPanel Orientation="Horizontal" Margin="0,4">
+      <TextBlock Text="悬停延迟(ms)" Width="80" VerticalAlignment="Center"/>
+      <TextBox x:Name="DelayBox" Width="80"/>
+    </StackPanel>
+    <StackPanel Orientation="Horizontal" Margin="0,4">
+      <TextBlock Text="侧栏厚度" Width="80" VerticalAlignment="Center"/>
+      <TextBox x:Name="WidthBox" Width="80"/>
+    </StackPanel>
+    <StackPanel Orientation="Horizontal" Margin="0,4">
+      <TextBlock Text="停靠边" Width="80" VerticalAlignment="Center"/>
+      <ComboBox x:Name="EdgeCombo" Width="160">
+        <ComboBoxItem Content="左侧" Tag="Left"/>
+        <ComboBoxItem Content="右侧" Tag="Right"/>
+        <ComboBoxItem Content="顶部" Tag="Top"/>
+        <ComboBoxItem Content="底部" Tag="Bottom"/>
+      </ComboBox>
+    </StackPanel>
+    <StackPanel Orientation="Horizontal" Margin="0,4">
+      <TextBlock Text="所在显示器" Width="80" VerticalAlignment="Center"/>
+      <ComboBox x:Name="MonitorCombo" Width="160"/>
+    </StackPanel>
+    <CheckBox x:Name="MinModeBox" Content="最小化模式（仅显示聚焦窗口）" Margin="0,6"/>
+    <CheckBox x:Name="AutoHideBox" Content="侧栏自动隐藏" Margin="0,4"/>
+    <CheckBox x:Name="AutoRestoreBox" Content="启动时恢复上次的栖窗（按窗口身份匹配）" Margin="0,4"/>
+    <Button Content="保存" Width="80" HorizontalAlignment="Right" Margin="0,10,0,0" Click="Save_Click"/>
+  </StackPanel>
+</Window>

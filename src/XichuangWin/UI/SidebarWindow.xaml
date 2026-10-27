@@ -1,0 +1,287 @@
+<Window x:Class="XichuangWin.SidebarWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="栖窗" Height="600" Width="220"
+        WindowStyle="None" ShowInTaskbar="True" Topmost="True"
+        ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display"
+        FontFamily="Microsoft YaHei UI, Segoe UI"
+        Loaded="Window_Loaded" StateChanged="OnStateChanged">
+
+  <Window.Resources>
+    <SolidColorBrush x:Key="Accent" Color="#4C8DFF"/>
+    <SolidColorBrush x:Key="AccentSoft" Color="#334C8DFF"/>
+    <SolidColorBrush x:Key="Fg" Color="#ECECF1"/>
+    <SolidColorBrush x:Key="FgDim" Color="#9A9AA4"/>
+    <SolidColorBrush x:Key="HoverFill" Color="#24FFFFFF"/>
+    <SolidColorBrush x:Key="PressFill" Color="#3DFFFFFF"/>
+
+    <!-- 基础按钮：圆角、无边框、悬停提亮 -->
+    <Style x:Key="GhostButton" TargetType="Button">
+      <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+      <Setter Property="Background" Value="#1FFFFFFF"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="10,6"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="SnapsToDevicePixels" Value="True"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="7"
+                    Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{StaticResource HoverFill}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{StaticResource PressFill}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.35"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- 小圆角图标按钮（标题栏 ＋ / ×） -->
+    <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
+      <Setter Property="Width" Value="24"/>
+      <Setter Property="Height" Value="24"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{StaticResource FgDim}"/>
+    </Style>
+
+    <!-- 列表行内的小 ✕ -->
+    <Style x:Key="RowClose" TargetType="Button" BasedOn="{StaticResource GhostButton}">
+      <Setter Property="Width" Value="18"/>
+      <Setter Property="Height" Value="18"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{StaticResource FgDim}"/>
+      <Setter Property="Opacity" Value="0.45"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="Foreground" Value="White"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- 分段布局切换：未选中透明，选中主色 -->
+    <Style x:Key="SegToggle" TargetType="ToggleButton">
+      <Setter Property="Foreground" Value="{StaticResource FgDim}"/>
+      <Setter Property="FontSize" Value="11.5"/>
+      <Setter Property="Height" Value="26"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ToggleButton">
+            <Border x:Name="bd" Background="Transparent" CornerRadius="6">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{StaticResource HoverFill}"/>
+                <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+              </Trigger>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentSoft}"/>
+                <Setter Property="Foreground" Value="#BFD6FF"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- 列表行 -->
+    <Style x:Key="RowBorder" TargetType="Border">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="CornerRadius" Value="7"/>
+      <Setter Property="Padding" Value="7,5"/>
+      <Setter Property="Margin" Value="0,1"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="{StaticResource HoverFill}"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- 加窗候选列表项容器 -->
+    <Style x:Key="PickItem" TargetType="ListBoxItem">
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Margin" Value="0"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBoxItem">
+            <Border x:Name="bd" Background="Transparent" CornerRadius="6">
+              <ContentPresenter/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{StaticResource HoverFill}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <Border x:Name="RootBorder" CornerRadius="0,12,12,0" Background="#F21A1A1C"
+          BorderBrush="#2EFFFFFF" BorderThickness="1">
+    <Border.Effect>
+      <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.45" Color="Black"/>
+    </Border.Effect>
+    <Grid Margin="8">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+
+      <!-- tab 条：固定宽度，超出横向滚动，不再换行堆叠 -->
+      <ScrollViewer x:Name="TabScroll" Grid.Row="0" HorizontalScrollBarVisibility="Hidden"
+                    VerticalScrollBarVisibility="Disabled" CanContentScroll="False"
+                    Margin="0,0,0,6" PreviewMouseWheel="TabScroll_PreviewMouseWheel">
+        <StackPanel x:Name="TabPanel" Orientation="Horizontal"/>
+      </ScrollViewer>
+
+      <!-- 标题 + 新建 + 隐藏 -->
+      <DockPanel Grid.Row="1" LastChildFill="True" Margin="2,0,0,8">
+        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="×"
+                Click="Hide_Click" ToolTip="隐藏侧栏（活动栖窗的窗口一起最小化）"/>
+        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="＋"
+                Click="NewTab_Click" Margin="0,0,2,0" ToolTip="新建栖窗"/>
+        <TextBlock x:Name="TitleText" Text="栖窗" Foreground="{StaticResource Fg}"
+                   FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis"/>
+      </DockPanel>
+
+      <!-- 分屏布局切换（作用于活动栖窗） -->
+      <Border Grid.Row="2" Background="#14FFFFFF" CornerRadius="8" Padding="2" Margin="0,0,0,8">
+        <UniformGrid x:Name="LayoutGrid" Columns="4">
+          <ToggleButton Content="单窗" Tag="Single" Style="{StaticResource SegToggle}" Click="Layout_Click"/>
+          <ToggleButton Content="左右" Tag="HSplit" Style="{StaticResource SegToggle}" Click="Layout_Click"/>
+          <ToggleButton Content="上下" Tag="VSplit" Style="{StaticResource SegToggle}" Click="Layout_Click"/>
+          <ToggleButton Content="网格" Tag="Grid" Style="{StaticResource SegToggle}" Click="Layout_Click"/>
+        </UniformGrid>
+      </Border>
+
+      <!-- 窗口列表——同时是拖放目标。活窗口 / 已关闭（灰显+可点击重开）/ 打开中 三态 -->
+      <ScrollViewer x:Name="ListScroll" Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <ItemsControl x:Name="List" AllowDrop="True"
+                      PreviewDragOver="List_PreviewDragOver" Drop="List_Drop">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border x:Name="row" Style="{StaticResource RowBorder}"
+                      BorderThickness="1" BorderBrush="Transparent"
+                      MouseEnter="Row_Enter" MouseLeave="Row_Leave" MouseLeftButtonDown="Row_Click">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <Image x:Name="ico" Grid.Column="0" Source="{Binding Icon}" Width="16" Height="16"
+                         Margin="0,0,7,0" VerticalAlignment="Center"/>
+                  <TextBlock x:Name="txt" Grid.Column="1" Text="{Binding Display}" Foreground="{StaticResource Fg}"
+                             FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                  <TextBlock x:Name="badge" Grid.Column="2" Text="已关闭" Visibility="Collapsed"
+                             Foreground="#7C7C88" FontSize="10" Margin="4,0,3,0" VerticalAlignment="Center"/>
+                  <Button x:Name="act" Grid.Column="3" Style="{StaticResource RowClose}" Content="✕"
+                          Tag="{Binding}" Click="RowAction_Click" ToolTip="移出此栖窗"/>
+                </Grid>
+              </Border>
+              <DataTemplate.Triggers>
+                <!-- 已关闭：灰显 + 细边框 + 角标，右侧 ✕ 变 ↻（点击即重开） -->
+                <DataTrigger Binding="{Binding Alive}" Value="False">
+                  <Setter TargetName="txt" Property="Foreground" Value="#74747F"/>
+                  <Setter TargetName="ico" Property="Opacity" Value="0.3"/>
+                  <Setter TargetName="badge" Property="Visibility" Value="Visible"/>
+                  <Setter TargetName="row" Property="BorderBrush" Value="#33FFFFFF"/>
+                  <Setter TargetName="act" Property="Content" Value="↻"/>
+                  <Setter TargetName="act" Property="ToolTip" Value="重新打开"/>
+                  <Setter TargetName="act" Property="Opacity" Value="0.85"/>
+                </DataTrigger>
+                <!-- 打开中：角标改文案，暂不给按钮（避免误删刚登记的行） -->
+                <DataTrigger Binding="{Binding Pending}" Value="True">
+                  <Setter TargetName="badge" Property="Text" Value="打开中…"/>
+                  <Setter TargetName="act" Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+              </DataTemplate.Triggers>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+
+      <!-- 底部操作 -->
+      <Grid Grid.Row="4" Margin="0,8,0,0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Button x:Name="AddBtn" Grid.Column="0" Style="{StaticResource GhostButton}"
+                Content="加窗 ▾" Click="AddWindow_Click" Margin="0,0,4,0"
+                ToolTip="把某个窗口加入当前栖窗（也可拖动候选项到上方列表）"/>
+        <Button Grid.Column="1" Style="{StaticResource GhostButton}" Content="设置"
+                Click="Settings_Click" Padding="12,6"/>
+      </Grid>
+
+      <!-- 「加窗」候选窗面板 -->
+      <Popup x:Name="AddPopup" PlacementTarget="{Binding ElementName=AddBtn}" Placement="Top"
+             StaysOpen="True" AllowsTransparency="True">
+        <Border Background="#F5222225" BorderBrush="#2EFFFFFF" BorderThickness="1"
+                CornerRadius="10" Padding="6">
+          <StackPanel>
+            <Grid Margin="2,0,2,5">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock x:Name="AddCountText" Text="可加入的窗口" Foreground="{StaticResource FgDim}"
+                         FontSize="11" VerticalAlignment="Center"/>
+              <Button Grid.Column="1" Content="全部加入" Style="{StaticResource GhostButton}"
+                      FontSize="11" Padding="8,3" Click="AddAll_Click"/>
+            </Grid>
+            <ListBox x:Name="AddList" MaxHeight="330" MinWidth="238" Background="Transparent"
+                     BorderThickness="0" ItemContainerStyle="{StaticResource PickItem}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Border Background="Transparent" Padding="6,4" Cursor="Hand"
+                          MouseLeftButtonDown="AddItem_Down"
+                          MouseLeftButtonUp="AddItem_Click" MouseMove="AddItem_Move">
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                      </Grid.ColumnDefinitions>
+                      <Image Grid.Column="0" Source="{Binding Icon}" Width="16" Height="16"
+                             Margin="0,0,7,0" VerticalAlignment="Center"/>
+                      <TextBlock Grid.Column="1" Text="{Binding Display}" Foreground="{StaticResource Fg}"
+                                 FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </StackPanel>
+        </Border>
+      </Popup>
+    </Grid>
+  </Border>
+</Window>

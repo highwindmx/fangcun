@@ -7,6 +7,11 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <AssemblyName>Fangcun</AssemblyName>
+    <Version>0.0.2</Version>
+    <AssemblyVersion>0.0.2.0</AssemblyVersion>
+    <FileVersion>0.0.2.0</FileVersion>
+    <Product>方寸 · 栖窗</Product>
+    <Description>方寸桌面图标围栏 + 栖窗窗口归集</Description>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <RootNamespace>Fangcun</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -16,6 +21,11 @@
 
   <ItemGroup>
     <None Include="Assets\fangcun.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 栖窗模块：窗口归集（侧栏/悬停/分屏），方寸逻辑保持不变，仅通过 Launcher 展开 -->
+    <ProjectReference Include="..\XichuangWin\XichuangWin.csproj" />
   </ItemGroup>
 
 </Project>
