@@ -62,38 +62,125 @@ public partial class SidebarWindow : Window
     // ---------- 定位：按配置停靠边 + 显示器 ----------
     public void ApplyPosition() => PositionToConfig();
 
-    private void Window_Loaded(object sender, RoutedEventArgs e) => PositionToConfig();
+    private void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        _collapsed = false;
+        Launcher.SidebarCollapsed = false;
+        PositionToConfig();
+        // 首次显示保持完整态（托盘「显示栖窗」要能看见内容）；之后鼠标移开再由定时器折叠
+        _autoHide = XichuangConfig.Current.AutoHide;
+    }
 
     private void PositionToConfig()
     {
         var cfg = XichuangConfig.Current;
         var work = WindowManager.WorkAreaPhysical(cfg.SidebarMonitor);
         double scale = Win32.ScaleForMonitor(Win32.MonitorByIndex(cfg.SidebarMonitor));
-        int t = (int)(cfg.SidebarWidth * scale); // 厚度（物理像素）
+        int t = (int)(cfg.SidebarWidth * scale);  // 展开厚度（物理像素）
+        int rail = (int)(RailThickness * scale);  // 折叠细条厚度（物理像素）
+        bool collapsed = _collapsed;
 
         switch (cfg.Edge)
         {
             case DockEdge.Left:
                 Left = work.Left / scale; Top = work.Top / scale;
-                Width = cfg.SidebarWidth; Height = work.Height / scale;
+                Width = collapsed ? RailThickness : cfg.SidebarWidth; Height = work.Height / scale;
                 RootBorder.CornerRadius = new CornerRadius(0, 12, 12, 0);
                 break;
             case DockEdge.Right:
-                Left = (work.Right - t) / scale; Top = work.Top / scale;
-                Width = cfg.SidebarWidth; Height = work.Height / scale;
+                Left = (collapsed ? work.Right - rail : work.Right - t) / scale; Top = work.Top / scale;
+                Width = collapsed ? RailThickness : cfg.SidebarWidth; Height = work.Height / scale;
                 RootBorder.CornerRadius = new CornerRadius(12, 0, 0, 12);
                 break;
             case DockEdge.Top:
                 Left = work.Left / scale; Top = work.Top / scale;
-                Width = work.Width / scale; Height = cfg.SidebarWidth;
+                Width = work.Width / scale; Height = collapsed ? RailThickness : cfg.SidebarWidth;
                 RootBorder.CornerRadius = new CornerRadius(0, 0, 12, 12);
                 break;
             case DockEdge.Bottom:
-                Left = work.Left / scale; Top = (work.Bottom - t) / scale;
-                Width = work.Width / scale; Height = cfg.SidebarWidth;
+                Left = work.Left / scale;
+                Top = (collapsed ? work.Bottom - rail : work.Bottom - t) / scale;
+                Width = work.Width / scale; Height = collapsed ? RailThickness : cfg.SidebarWidth;
                 RootBorder.CornerRadius = new CornerRadius(12, 12, 0, 0);
                 break;
         }
+
+        // 折叠态只留贴边细条；展开态恢复完整内容
+        ContentRoot.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        RootBorder.ToolTip = collapsed ? "鼠标移入展开栖窗" : null;
+    }
+
+    // ---------- 自动隐藏：折叠为贴边细条，鼠标移入展开 ----------
+    /// <summary>折叠后保留的贴边细条厚度（逻辑像素）。太细不好点，太厚占地方。</summary>
+    private const double RailThickness = 8;
+
+    private bool _autoHide;
+    private bool _collapsed;
+    private DispatcherTimer? _collapseTimer;
+
+    /// <summary>按当前配置应用/取消自动隐藏。设置保存后调用，立即生效，无需重开栖窗。</summary>
+    public void ApplyAutoHide()
+    {
+        _autoHide = XichuangConfig.Current.AutoHide;
+        _collapseTimer?.Stop();
+
+        if (!_autoHide)
+        {
+            Expand();
+            return;
+        }
+        // 鼠标不在侧栏上就立刻折起（在设置窗点保存时正是如此）；在侧栏上则等移开再折
+        if (!IsMouseOver) Collapse();
+    }
+
+    /// <summary>从折叠态恢复为完整侧栏（托盘「显示栖窗」等外部唤出入口使用）。</summary>
+    public void ExpandFromAutoHide() => Expand();
+
+    private void Window_MouseEnter(object sender, MouseEventArgs e)
+    {
+        if (!_autoHide) return;
+        _collapseTimer?.Stop();
+        if (_collapsed) Expand();
+    }
+
+    private void Window_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (!_autoHide || _collapsed) return;
+        if (AddPopup.IsOpen) return;   // 加窗弹层开着时先不折，避免误收
+
+        _collapseTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(450) };
+        _collapseTimer.Stop();
+        _collapseTimer.Tick -= OnCollapseTick;
+        _collapseTimer.Tick += OnCollapseTick;
+        _collapseTimer.Start();
+    }
+
+    private void OnCollapseTick(object? sender, EventArgs e)
+    {
+        _collapseTimer?.Stop();
+        if (!_autoHide || IsMouseOver || AddPopup.IsOpen) return;
+        Collapse();
+    }
+
+    private void Collapse()
+    {
+        if (_collapsed) return;
+        _collapsed = true;
+        Launcher.SidebarCollapsed = true;
+        PositionToConfig();
+        // 可选：折叠后把排布区扩到整个工作区（左右停靠即横向铺满全屏）
+        if (XichuangConfig.Current.ExpandOnAutoHide)
+            Launcher.ActiveInstance?.Wm.Reflow();
+    }
+
+    private void Expand()
+    {
+        Launcher.SidebarCollapsed = false;
+        if (!_collapsed) return;
+        _collapsed = false;
+        PositionToConfig();
+        if (XichuangConfig.Current.ExpandOnAutoHide)
+            Launcher.ActiveInstance?.Wm.Reflow();
     }
 
     // ---------- 联动：最小化/恢复 ----------

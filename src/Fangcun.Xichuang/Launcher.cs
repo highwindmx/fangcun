@@ -18,6 +18,9 @@ public static class Launcher
     public static IReadOnlyDictionary<string, XichuangInstance> Instances => _instances;
     public static XichuangInstance? ActiveInstance => _instances.TryGetValue(ActiveName, out var i) ? i : null;
 
+    /// <summary>侧栏当前是否折叠为贴边细条（自动隐藏）。布局引擎据此决定是否还为侧栏让出厚度。</summary>
+    public static bool SidebarCollapsed { get; set; }
+
     /// <summary>方寸启动完成后调用一次：只加载配置。真正的恢复延后到「第一次打开侧栏」——
     /// 因为开机自启时目标程序可能还没起来，此刻匹配不到任何窗口。</summary>
     public static void Initialize()
@@ -58,6 +61,7 @@ public static class Launcher
         if (_sidebar.WindowState == System.Windows.WindowState.Minimized)
             _sidebar.WindowState = System.Windows.WindowState.Normal;
         else if (!_sidebar.IsVisible) _sidebar.Show();
+        _sidebar.ExpandFromAutoHide();   // 折叠成细条时，任何「显示侧栏」入口都要还原为完整态
     }
 
     private static bool SidebarShown()
@@ -244,6 +248,9 @@ public static class Launcher
         _sidebar?.ApplyPosition();
         ActiveInstance?.Wm.Reflow();
     }
+
+    /// <summary>让「自动隐藏」设置立即生效（无需重开栖窗）。</summary>
+    public static void ApplyAutoHide() => _sidebar?.ApplyAutoHide();
 
     /// <summary>刷新侧栏中活动实例的窗口列表（供实例实时归集回调）。</summary>
     public static void RefreshActiveList() => _sidebar?.RefreshActiveList();

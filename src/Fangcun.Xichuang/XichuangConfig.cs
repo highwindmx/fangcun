@@ -72,6 +72,9 @@ public class XichuangConfig
     /// <summary>侧栏自动隐藏（鼠标离开后收起）。v1 占位，默认关。</summary>
     public bool AutoHide { get; set; } = false;
 
+    /// <summary>自动隐藏折叠后，把窗口排布区扩到整个工作区（左/右停靠时即横向铺满全屏）。</summary>
+    public bool ExpandOnAutoHide { get; set; } = false;
+
     /// <summary>启动时是否按上次快照恢复栖窗（只认窗口身份，不主动移动窗口，打开侧栏时才铺排）。</summary>
     public bool AutoRestore { get; set; } = true;
 

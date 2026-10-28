@@ -15,6 +15,7 @@ public partial class SettingsWindow : Window
         WidthBox.Text = c.SidebarWidth.ToString();
         MinModeBox.IsChecked = c.MinMode;
         AutoHideBox.IsChecked = c.AutoHide;
+        ExpandOnAutoHideBox.IsChecked = c.ExpandOnAutoHide;
         AutoRestoreBox.IsChecked = c.AutoRestore;
 
         // 停靠边
@@ -48,13 +49,15 @@ public partial class SettingsWindow : Window
 
         c.MinMode = MinModeBox.IsChecked == true;
         c.AutoHide = AutoHideBox.IsChecked == true;
+        c.ExpandOnAutoHide = ExpandOnAutoHideBox.IsChecked == true;
         c.AutoRestore = AutoRestoreBox.IsChecked == true;
         c.Save();
 
-        // 停靠边/厚度/显示器变更：立即重新定位侧栏并重新排布活动实例窗口
+        // 停靠边/厚度/显示器/自动隐藏变更：立即生效，不用重开栖窗
         Launcher.Relayout();
+        Launcher.ApplyAutoHide();
 
-        MessageBox.Show("已保存。停靠边/显示器已即时生效；其它项下次打开侧栏生效。", "栖窗");
+        MessageBox.Show("已保存。停靠边、显示器、自动隐藏已即时生效；其它项下次打开侧栏生效。", "栖窗");
         Close();
     }
 }

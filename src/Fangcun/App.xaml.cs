@@ -170,6 +170,10 @@ namespace Fangcun
                 xcRestore.ToolTipText = "按上次保存的配置恢复栖窗并显示";
                 xcRestore.Click += (_, _) => Fangcun.Xichuang.Launcher.RestorePrevious();
                 menu.Items.Add(xcRestore);
+                var xcShow = new ToolStripMenuItem("显示栖窗");
+                xcShow.ToolTipText = "重新显示被隐藏或自动折叠的侧栏";
+                xcShow.Click += (_, _) => Fangcun.Xichuang.Launcher.ShowSidebar();
+                menu.Items.Add(xcShow);
                 var xcSettings = new ToolStripMenuItem("栖窗设置");
                 xcSettings.Click += (_, _) => Fangcun.Xichuang.Launcher.ShowSettings();
                 menu.Items.Add(xcSettings);

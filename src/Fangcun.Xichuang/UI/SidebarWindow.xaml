@@ -6,7 +6,8 @@
         ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent"
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display"
         FontFamily="Microsoft YaHei UI, Segoe UI"
-        Loaded="Window_Loaded" StateChanged="OnStateChanged">
+        Loaded="Window_Loaded" StateChanged="OnStateChanged"
+        MouseEnter="Window_MouseEnter" MouseLeave="Window_MouseLeave">
 
   <Window.Resources>
     <SolidColorBrush x:Key="Accent" Color="#4C8DFF"/>
@@ -142,7 +143,7 @@
     <Border.Effect>
       <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.45" Color="Black"/>
     </Border.Effect>
-    <Grid Margin="8">
+    <Grid x:Name="ContentRoot" Margin="8">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>

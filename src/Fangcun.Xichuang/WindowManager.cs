@@ -313,12 +313,17 @@ public class WindowManager
         double scale = Win32.ScaleForMonitor(hMon);
         int t = (int)(cfg.SidebarWidth * scale); // 侧栏厚度（物理像素）
 
-        switch (cfg.Edge)
+        // 自动隐藏折叠后且开启「横向扩展全屏」→ 不再为侧栏让出厚度，窗口铺满工作区
+        bool expand = cfg.AutoHide && cfg.ExpandOnAutoHide && Launcher.SidebarCollapsed;
+        if (!expand)
         {
-            case DockEdge.Left: work.Left += t; break;
-            case DockEdge.Right: work.Right -= t; break;
-            case DockEdge.Top: work.Top += t; break;
-            case DockEdge.Bottom: work.Bottom -= t; break;
+            switch (cfg.Edge)
+            {
+                case DockEdge.Left: work.Left += t; break;
+                case DockEdge.Right: work.Right -= t; break;
+                case DockEdge.Top: work.Top += t; break;
+                case DockEdge.Bottom: work.Bottom -= t; break;
+            }
         }
         return work;
     }
